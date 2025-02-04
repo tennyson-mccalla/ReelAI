@@ -9,7 +9,8 @@ class AuthViewModel: ObservableObject {
 
     init() {
         // Listen for auth state changes
-        Auth.auth().addStateDidChangeListener { [weak self] _, user in
+        // Store the listener to prevent it from being deallocated
+        _ = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             DispatchQueue.main.async {
                 self?.user = user
                 self?.isAuthenticated = user != nil
@@ -35,13 +36,15 @@ class AuthViewModel: ObservableObject {
     func signIn(email: String, password: String) {
         isLoading = true
         errorMessage = nil
-        Auth.auth().signIn(withEmail: email, password: password) { _, error in
+        Auth.auth().signIn(withEmail: email, password: password) { [weak self] _, error in
             DispatchQueue.main.async {
-                self?.isLoading = false
+                // Fix optional chaining on non-optional self
                 if let error = error {
                     self?.errorMessage = error.localizedDescription
+                    self?.isLoading = false
                     return
                 }
+                self?.isLoading = false
             }
         }
     }
