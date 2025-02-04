@@ -4,10 +4,33 @@
 <dict>
 	<key>SchemeUserState</key>
 	<dict>
+		<key>Promises (Playground).xcscheme</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>1</integer>
+		</dict>
 		<key>ReelAI.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
 			<integer>0</integer>
+		</dict>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>4C87734F2D514B1F009D99EE</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>4C87735F2D514B21009D99EE</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>4C8773692D514B21009D99EE</key>
+		<dict>
+			<key>primary</key>
+			<true/>
 		</dict>
 	</dict>
 </dict>

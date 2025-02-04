@@ -6,6 +6,7 @@ struct VideoPlayerView: View {
     @StateObject private var playerViewModel = VideoPlayerViewModel()
     @State private var isMuted = false
     @State private var isPlaying = true
+    @State private var simulateOffline = false
 
     // Standard tab bar height
     private let tabBarHeight: CGFloat = 49
@@ -44,6 +45,26 @@ struct VideoPlayerView: View {
 
                     Spacer()
 
+                    // Add debug button
+                    Button("Test Cache") {
+                        Task {
+                            await VideoCacheManager.shared.debugPrintCache()
+                        }
+                    }
+                    .padding()
+                    .background(Color.black.opacity(0.5))
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+
+                    // Add this button near the existing Test Cache button
+                    Button(simulateOffline ? "Online Mode" : "Offline Mode") {
+                        simulateOffline.toggle()
+                    }
+                    .padding()
+                    .background(Color.red.opacity(0.5))
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+
                     // Progress bar above tab bar
                     Rectangle()
                         .fill(Color.white.opacity(0.2))
@@ -64,10 +85,38 @@ struct VideoPlayerView: View {
         .ignoresSafeArea(.all)
         .background(Color.black)
         .onAppear {
-            playerViewModel.loadVideo(url: videoURL)
+            Task {
+                await loadVideo(from: videoURL)
+            }
         }
         .onDisappear {
             playerViewModel.cleanup()
+        }
+    }
+
+    private func loadVideo(from url: URL) async {
+        do {
+            if simulateOffline {
+                // Only try to load from cache
+                let cachedURL = try await VideoCacheManager.shared.cacheVideo(
+                    from: url,
+                    withIdentifier: url.lastPathComponent
+                )
+                if FileManager.default.fileExists(atPath: cachedURL.path) {
+                    playerViewModel.loadVideo(url: cachedURL)
+                } else {
+                    print("No cached version available in offline mode")
+                }
+                return
+            }
+
+            let cachedURL = try await VideoCacheManager.shared.cacheVideo(
+                from: url,
+                withIdentifier: url.lastPathComponent
+            )
+            playerViewModel.loadVideo(url: cachedURL)
+        } catch {
+            print("Error loading video: \(error)")
         }
     }
 }

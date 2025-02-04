@@ -113,3 +113,16 @@ docs/
 
 # Git backup directory
 .git.bak/
+
+# Additional Security
+# Local configuration files
+**/*Config.{json,plist}
+**/*Configuration.{json,plist}
+
+# API Keys and Secrets
+**/ApiKeys.{swift,json,plist}
+**/Keys.{swift,json,plist}
+
+# Authentication
+**/*Auth*.{json,plist}
+**/*.auth.*
