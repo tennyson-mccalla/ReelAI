@@ -110,3 +110,6 @@ playground.xcworkspace
 
 # Planning documentation
 docs/
+
+# Git backup directory
+.git.bak/
