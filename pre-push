@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Path to the pre-push hook script
+HOOK_PATH=".git/hooks/pre-push"
+
+# Create the pre-push hook script
+cat > $HOOK_PATH << 'EOL'
+#!/bin/bash
+
+# Run SwiftLint with stricter rules
+SWIFT_LINT_OUTPUT=$(swiftlint lint --strict --quiet)
+
+if [ -n "$SWIFT_LINT_OUTPUT" ]; then
+    echo "❌ SwiftLint found issues (strict mode):"
+    echo "$SWIFT_LINT_OUTPUT"
+    exit 1
+fi
+
+# Run tests (if you have them)
+# xcodebuild test -scheme YourScheme -destination 'platform=iOS Simulator,name=iPhone 14'
+
+echo "✅ Pre-push checks passed"
+exit 0
+EOL
+
+# Make the hook executable
+chmod +x $HOOK_PATH 
