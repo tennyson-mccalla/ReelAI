@@ -26,6 +26,10 @@ actor VideoCacheManager {
 
         // Download and cache
         let (downloadURL, _) = try await URLSession.shared.download(from: url)
+        // Add error handling for existing file
+        if fileManager.fileExists(atPath: cachedFileURL.path) {
+            try fileManager.removeItem(at: cachedFileURL)
+        }
         try fileManager.moveItem(at: downloadURL, to: cachedFileURL)
 
         // Cleanup if needed
@@ -88,5 +92,21 @@ actor VideoCacheManager {
         print("Cache directory: \(cacheDirectory)")
         print("Cached files: \(contents?.count ?? 0)")
         print("Total size: \(await calculateCacheSize() / 1024 / 1024)MB")
+    }
+
+    func clearCache() async {
+        do {
+            let contents = try fileManager.contentsOfDirectory(
+                at: cacheDirectory,
+                includingPropertiesForKeys: nil
+            )
+
+            for file in contents {
+                try fileManager.removeItem(at: file)
+            }
+            print("Cache cleared successfully")
+        } catch {
+            print("Error clearing cache: \(error)")
+        }
     }
 }
