@@ -13,6 +13,7 @@ class VideoUploadViewModel: ObservableObject {
     @Published var thumbnailImage: UIImage?
     @Published var caption: String = ""
     @Published var uploadComplete = false
+    @Published var lastUploadedVideoURL: URL?
 
     private let storage = Storage.storage().reference()
     private let db = Firestore.firestore()
@@ -142,6 +143,12 @@ class VideoUploadViewModel: ObservableObject {
 
         do {
             try await db.collection("videos").addDocument(data: videoData)
+            let videoRef = storage.child("videos/\(videoName)")
+            let downloadURL = try await videoRef.downloadURL()
+            await MainActor.run {
+                self.lastUploadedVideoURL = downloadURL
+                print("📱 Video URL: \(downloadURL.absoluteString)")
+            }
         } catch {
             print("❌ Error saving metadata: \(error.localizedDescription)")
             throw error

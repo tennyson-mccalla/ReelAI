@@ -27,7 +27,35 @@ struct ReelAIApp: App {
     var body: some Scene {
         WindowGroup {
             if authViewModel.isAuthenticated {
-                VideoUploadView()
+                TabView {
+                    VideoFeedView()
+                        .tabItem {
+                            Label("Home", systemImage: "house.fill")
+                        }
+
+                    PlaceholderView(feature: "Friends")
+                        .tabItem {
+                            Label("Friends", systemImage: "person.2.fill")
+                        }
+
+                    VideoUploadView()
+                        .tabItem {
+                            Label("Create", systemImage: "plus.circle.fill")
+                        }
+
+                    PlaceholderView(feature: "Messages")
+                        .tabItem {
+                            Label("Messages", systemImage: "message.fill")
+                        }
+
+                    PlaceholderView(feature: "Profile")
+                        .tabItem {
+                            Label("Profile", systemImage: "person.circle.fill")
+                        }
+                }
+                .tint(.blue)
+                .background(Color.black)
+                .ignoresSafeArea(.all)
             } else {
                 AuthView()
             }
