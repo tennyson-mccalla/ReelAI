@@ -1,0 +1,41 @@
+disabled_rules:
+  - trailing_whitespace
+  - line_length
+  - trailing_newline
+  - todo
+  - multiple_closures_with_trailing_closure
+  - closure_spacing
+  - identifier_name  # For long UI test names
+  - colon  # For dictionary literals
+  - static_over_final_class  # For UI tests
+
+opt_in_rules:
+  - empty_count
+  - missing_docs
+  - explicit_init
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+
+excluded:
+  - Pods
+  - .build
+  - DerivedData
+
+type_name:
+  min_length: 3
+
+function_parameter_count:
+  warning: 6
+  error: 8
+
+file_length:
+  warning: 500
+  error: 1000
+
+type_body_length:
+  warning: 300
+  error: 500
+
+function_body_length:
+  warning: 50
+  error: 100
