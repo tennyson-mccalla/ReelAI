@@ -1,0 +1,2 @@
+static var runsForEachTargetApplicationUIConfiguration: Bool {
+ 
