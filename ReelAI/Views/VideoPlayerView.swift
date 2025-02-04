@@ -95,6 +95,7 @@ struct VideoPlayerView: View {
     }
 
     private func loadVideo(from url: URL) async {
+        let startTime = CFAbsoluteTimeGetCurrent()
         do {
             if simulateOffline {
                 // Only try to load from cache
@@ -115,6 +116,7 @@ struct VideoPlayerView: View {
                 withIdentifier: url.lastPathComponent
             )
             playerViewModel.loadVideo(url: cachedURL)
+            print("Video load time: \(CFAbsoluteTimeGetCurrent() - startTime) seconds")
         } catch {
             print("Error loading video: \(error)")
         }
@@ -149,11 +151,6 @@ struct CustomVideoPlayer: UIViewRepresentable {
             playerLayer.player = player
             playerLayer.frame = uiView.bounds
             playerLayer.videoGravity = .resizeAspect
-
-            // Force layout and check positioning
-            playerLayer.layoutIfNeeded()
-            let videoRect = playerLayer.videoRect
-            print("📐 Video positioning - Frame: \(playerLayer.frame), Video rect: \(videoRect)")
         }
     }
 
@@ -180,17 +177,18 @@ class VideoPlayerViewModel: ObservableObject {
         player = AVPlayer(playerItem: playerItem)
         player?.play()
 
-        // Add progress tracking
+        // This time observer is probably generating lots of logs
         timeObserver = player?.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
         ) { [weak self] time in
             guard let duration = self?.player?.currentItem?.duration.seconds,
-                  !duration.isNaN,
-                  duration > 0
+                  duration.isFinite && duration > 0
             else { return }
 
-            self?.progress = time.seconds / duration
+            DispatchQueue.main.async {
+                self?.progress = min(max(time.seconds / duration, 0), 1)
+            }
         }
 
         // Loop video

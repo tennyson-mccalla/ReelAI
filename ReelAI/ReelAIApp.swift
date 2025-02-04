@@ -11,10 +11,7 @@ import FirebaseCore
 class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-    // Only configure if it hasn't been configured yet
-    if FirebaseApp.app() == nil {
-      FirebaseApp.configure()
-    }
+    FirebaseApp.configure()
     return true
   }
 }
