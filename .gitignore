@@ -67,6 +67,31 @@ fastlane/test_output
 
 # Firebase
 GoogleService-Info.plist
+**/GoogleService-Info.plist
+
+# Environment files & Keys
+*.env
+*.env.*
+.env.local
+.env.development
+.env.test
+.env.production
+*.pem
+*.key
+*.keystore
+*.p12
+*.cer
+*.mobileprovision
+
+# Secrets
+**/secrets.*
+**/Secrets.*
+**/Keys.*
+**/keys.*
+**/Private.*
+**/private.*
+*Configuration.plist
+*Credentials.plist
 
 # OS generated files
 .DS_Store
@@ -81,4 +106,7 @@ Thumbs.db
 *.xcarchive
 *.xcuserstate
 timeline.xctimeline
-playground.xcworkspace 
+playground.xcworkspace
+
+# Planning documentation
+docs/
