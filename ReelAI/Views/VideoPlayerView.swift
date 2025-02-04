@@ -65,6 +65,18 @@ struct VideoPlayerView: View {
                     .foregroundColor(.white)
                     .cornerRadius(8)
 
+                    // Add this button near the other test buttons
+                    Button("Clear Cache") {
+                        Task {
+                            await VideoCacheManager.shared.clearCache()
+                            await VideoCacheManager.shared.debugPrintCache()
+                        }
+                    }
+                    .padding()
+                    .background(Color.orange.opacity(0.5))
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+
                     // Progress bar above tab bar
                     Rectangle()
                         .fill(Color.white.opacity(0.2))
