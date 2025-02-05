@@ -11,7 +11,9 @@ import FirebaseCore
 class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+    print("AppDelegate: Configuring Firebase") // Debug print
     FirebaseApp.configure()
+    print("AppDelegate: Firebase configured") // Debug print
     return true
   }
 }
@@ -21,9 +23,16 @@ struct ReelAIApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var authViewModel = AuthViewModel()
 
+    init() {
+        print("ReelAIApp: Initializing") // Debug print
+    }
+
     var body: some Scene {
         WindowGroup {
+            _ = print("ReelAIApp: Building view hierarchy") // Debug print
+            _ = print("Auth state: \(authViewModel.isAuthenticated)") // Debug print
             if authViewModel.isAuthenticated {
+                _ = print("ReelAIApp: Showing TabView") // Debug print
                 TabView {
                     VideoFeedView()
                         .tabItem {
@@ -54,6 +63,7 @@ struct ReelAIApp: App {
                 .background(Color.black)
                 .ignoresSafeArea(.all)
             } else {
+                _ = print("ReelAIApp: Showing AuthView") // Debug print
                 AuthView()
             }
         }

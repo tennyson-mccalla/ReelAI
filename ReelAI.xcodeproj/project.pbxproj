@@ -12,6 +12,7 @@
 		4C66FF622D5168160095FCBE /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 4C66FF612D5168160095FCBE /* FirebaseStorage */; };
 		4C66FF662D516BE30095FCBE /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 4C66FF652D516BE30095FCBE /* FirebaseAnalytics */; };
 		4C66FF682D516BE30095FCBE /* FirebaseAnalyticsWithoutAdIdSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 4C66FF672D516BE30095FCBE /* FirebaseAnalyticsWithoutAdIdSupport */; };
+		4C7611412D540A2800D24827 /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = 4C7611402D540A2800D24827 /* FirebaseDatabase */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -60,6 +61,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4C7611412D540A2800D24827 /* FirebaseDatabase in Frameworks */,
 				4C66FF5E2D5168160095FCBE /* FirebaseAuth in Frameworks */,
 				4C66FF682D516BE30095FCBE /* FirebaseAnalyticsWithoutAdIdSupport in Frameworks */,
 				4C66FF602D5168160095FCBE /* FirebaseFirestore in Frameworks */,
@@ -130,6 +132,7 @@
 				4C66FF612D5168160095FCBE /* FirebaseStorage */,
 				4C66FF652D516BE30095FCBE /* FirebaseAnalytics */,
 				4C66FF672D516BE30095FCBE /* FirebaseAnalyticsWithoutAdIdSupport */,
+				4C7611402D540A2800D24827 /* FirebaseDatabase */,
 			);
 			productName = ReelAI;
 			productReference = 4C8773502D514B1F009D99EE /* ReelAI.app */;
@@ -424,8 +427,8 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationPortrait";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -434,9 +437,13 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.ten.reelai;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -455,8 +462,8 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationPortrait";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -465,9 +472,13 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.ten.reelai;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -616,6 +627,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4C66FF5C2D5168160095FCBE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAnalyticsWithoutAdIdSupport;
+		};
+		4C7611402D540A2800D24827 /* FirebaseDatabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4C66FF5C2D5168160095FCBE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseDatabase;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
