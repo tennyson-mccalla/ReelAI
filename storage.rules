@@ -1,0 +1,13 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /videos/{videoFile} {
+      allow read: if true;  // Anyone can read videos
+      allow write: if request.auth != null;  // Only authenticated users can upload
+    }
+    match /thumbnails/{thumbnailFile} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}
