@@ -1,4 +1,6 @@
 import SwiftUI
+import FirebaseFirestore
+import FirebaseStorage
 
 struct VideoFeedView: View {
     @StateObject private var feedViewModel = VideoFeedViewModel()
@@ -31,7 +33,7 @@ struct VideoFeedView: View {
         .ignoresSafeArea()
         .onAppear {
             // For testing, let's add a sample video
-            feedViewModel.loadTestVideo()
+            feedViewModel.loadVideos()
         }
     }
 }
@@ -44,16 +46,41 @@ struct Video: Identifiable {
 
 class VideoFeedViewModel: ObservableObject {
     @Published var videos: [Video] = []
+    private let db = Firestore.firestore()
 
-    func loadTestVideo() {
-        let videoURLs = [
-            "https://firebasestorage.googleapis.com/v0/b/reelai-a3565.firebasestorage.app/o/videos%2F26E6C92C-7491-4F83-BD47-FCCE49528143.mp4?alt=media",
-            "https://firebasestorage.googleapis.com/v0/b/reelai-a3565.firebasestorage.app/o/videos%2F6A1FF63B-1C01-4BA2-A304-F47DD69A3491.mp4?alt=media"
-        ]
+    func loadVideos() {
+        db.collection("videos")
+            .order(by: "timestamp", descending: true)
+            .getDocuments { [weak self] snapshot, error in
+                if let error = error {
+                    print("Error loading videos: \(error.localizedDescription)")
+                    return
+                }
 
-        videos = videoURLs.enumerated().compactMap { index, urlString in
-            guard let url = URL(string: urlString) else { return nil }
-            return Video(id: "\(index + 1)", url: url)
-        }
+                guard let documents = snapshot?.documents else { return }
+
+                Task {
+                    var loadedVideos: [Video] = []
+                    for document in documents {
+                        let data = document.data()
+                        if let videoName = data["videoName"] as? String {
+                            let storage = Storage.storage().reference()
+                            let videoRef = storage.child("videos/\(videoName)")
+                            if let url = try? await videoRef.downloadURL() {
+                                let video = Video(
+                                    id: document.documentID,
+                                    url: url
+                                    // Add more metadata as needed
+                                )
+                                loadedVideos.append(video)
+                            }
+                        }
+                    }
+
+                    await MainActor.run {
+                        self?.videos = loadedVideos.shuffled()
+                    }
+                }
+            }
     }
 }

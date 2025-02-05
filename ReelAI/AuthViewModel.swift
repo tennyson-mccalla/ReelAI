@@ -6,6 +6,8 @@ class AuthViewModel: ObservableObject {
     @Published var isAuthenticated = false
     @Published var errorMessage: String?
     @Published var isLoading = false
+    @Published var email = ""
+    @Published var password = ""
 
     init() {
         // Listen for auth state changes
@@ -18,7 +20,7 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    func signUp(email: String, password: String) {
+    func signUp() {
         isLoading = true
         errorMessage = nil
         Auth.auth().createUser(withEmail: email, password: password) { [weak self] _, error in
@@ -28,22 +30,22 @@ class AuthViewModel: ObservableObject {
                     self?.errorMessage = error.localizedDescription
                     return
                 }
-                // User is automatically signed in after creation
+                self?.password = ""
             }
         }
     }
 
-    func signIn(email: String, password: String) {
+    func signIn() {
         isLoading = true
         errorMessage = nil
         Auth.auth().signIn(withEmail: email, password: password) { [weak self] _, error in
             DispatchQueue.main.async {
-                // Fix optional chaining on non-optional self
                 if let error = error {
                     self?.errorMessage = error.localizedDescription
                     self?.isLoading = false
                     return
                 }
+                self?.password = ""
                 self?.isLoading = false
             }
         }
@@ -57,7 +59,7 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    func resetPassword(email: String) {
+    func resetPassword() {
         Auth.auth().sendPasswordReset(withEmail: email) { [weak self] error in
             DispatchQueue.main.async {
                 if let error = error {
