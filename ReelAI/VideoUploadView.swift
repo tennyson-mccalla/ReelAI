@@ -47,7 +47,6 @@ struct VideoUploadView: View {
 
                 // Overlay cancel button when uploading
                 if viewModel.isUploading {
-                    _ = print("📱 Cancel overlay appeared")  // Print only once
                     VStack {
                         Spacer()
                         Button(action: {
@@ -61,6 +60,9 @@ struct VideoUploadView: View {
                                 .cornerRadius(8)
                         }
                         .padding(.bottom, 40)
+                    }
+                    .onAppear {
+                        print("📱 Cancel overlay appeared")
                     }
                 }
             }
