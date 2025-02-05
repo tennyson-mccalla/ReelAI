@@ -126,3 +126,4 @@ docs/
 # Authentication
 **/*Auth*.{json,plist}
 **/*.auth.*
+serviceAccount.json
