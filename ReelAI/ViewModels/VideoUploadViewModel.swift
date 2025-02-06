@@ -4,6 +4,7 @@ import AVFoundation
 import UIKit
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseDatabase
 
 enum VideoQuality {
     case high    // 1080p, 8Mbps
@@ -40,11 +41,13 @@ class VideoUploadViewModel: ObservableObject {
     @Published var uploadComplete = false
     @Published var lastUploadedVideoURL: URL?
     @Published var selectedQuality: VideoQuality = .medium
+    @Published var shouldNavigateToProfile = false
 
     private let storage = Storage.storage().reference()
     private let db = Firestore.firestore()
     private var thumbnailURL: String?
     private var currentUploadTask: StorageUploadTask?
+    private let dbRef = Database.database().reference()
 
     private func compressVideo(at sourceURL: URL, quality: VideoQuality) async throws -> URL {
         let inputSize = try sourceURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
@@ -114,7 +117,9 @@ class VideoUploadViewModel: ObservableObject {
         print("📱 Starting video compression")
         let compressedVideoURL = try await compressVideo(at: videoURL, quality: selectedQuality)
 
-        let videoName = UUID().uuidString + ".mp4"
+        // Generate one UUID for both video and thumbnail
+        let baseVideoName = UUID().uuidString
+        let videoName = baseVideoName + ".mp4"
         print("📱 Starting video upload: \(videoName)")
 
         try await uploadVideoFile(compressedVideoURL, name: videoName)
@@ -124,8 +129,8 @@ class VideoUploadViewModel: ObservableObject {
         print("✅ Cleaned up temporary files")
 
         if let thumbnail = thumbnailImage {
-            print("�� Starting thumbnail upload")
-            try await uploadThumbnail(thumbnail, for: videoName)
+            print("📱 Starting thumbnail upload")
+            try await uploadThumbnail(thumbnail, baseVideoName: baseVideoName)
             print("✅ Thumbnail upload complete")
         }
 
@@ -170,7 +175,8 @@ class VideoUploadViewModel: ObservableObject {
         selectedVideoURL = nil
         thumbnailImage = nil
         caption = ""
-        errorMessage = "✅ Upload complete! Your video will appear in your profile soon."
+        errorMessage = "✅ Upload complete!"
+        shouldNavigateToProfile = true
         print("✅ Upload complete with UI update")
     }
 
@@ -220,28 +226,33 @@ class VideoUploadViewModel: ObservableObject {
         }
     }
 
-    private func uploadThumbnail(_ image: UIImage, for videoName: String) async throws {
+    private func uploadThumbnail(_ image: UIImage, baseVideoName: String) async throws {
+        print("📱 Starting thumbnail upload for: \(baseVideoName)")
         guard let thumbnailData = image.jpegData(compressionQuality: 0.7) else {
-            throw NSError(domain: "ThumbnailError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not create thumbnail data"])
+            throw NSError(domain: "ThumbnailError", code: -1)
         }
 
-        let thumbnailName = UUID().uuidString + ".jpg"
+        let thumbnailName = "\(baseVideoName).jpg"
+        print("📱 Thumbnail will be saved as: \(thumbnailName)")
         let thumbnailRef = storage.child("thumbnails/\(thumbnailName)")
 
         return try await withCheckedThrowingContinuation { continuation in
             thumbnailRef.putData(thumbnailData, metadata: nil) { [weak self] _, error in
                 if let error = error {
+                    print("❌ Thumbnail upload failed: \(error)")
                     continuation.resume(throwing: error)
                     return
                 }
 
                 thumbnailRef.downloadURL { url, error in
                     if let error = error {
+                        print("❌ Failed to get thumbnail URL: \(error)")
                         continuation.resume(throwing: error)
                         return
                     }
 
                     if let thumbnailURL = url?.absoluteString {
+                        print("✅ Thumbnail uploaded successfully: \(thumbnailURL)")
                         self?.thumbnailURL = thumbnailURL
                         continuation.resume(returning: ())
                     } else {
@@ -285,17 +296,15 @@ class VideoUploadViewModel: ObservableObject {
                 let videoData: [String: Any] = [
                     "userId": user.uid,
                     "videoName": videoName,
+                    "timestamp": ServerValue.timestamp(),
                     "caption": caption.trimmingCharacters(in: .whitespacesAndNewlines),
-                    "thumbnailURL": thumbnailURL ?? "",
-                    "timestamp": FieldValue.serverTimestamp(),
                     "likes": 0,
-                    "comments": 0,
-                    "videoURL": downloadURL.absoluteString  // Add video URL to metadata
+                    "comments": 0
                 ]
 
-                print("📱 Attempting Firestore write (\(attempt)/3)")
-                try await db.collection("videos").addDocument(data: videoData)
-                print("✅ Document added to Firestore")
+                print("📱 Attempting Realtime Database write (\(attempt)/3)")
+                try await dbRef.child("videos").childByAutoId().setValue(videoData)
+                print("✅ Document added to Realtime Database")
                 return
 
             } catch {

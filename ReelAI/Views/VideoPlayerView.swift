@@ -3,95 +3,127 @@ import AVKit
 
 struct VideoPlayerView: View {
     let videoURL: URL
-    @StateObject private var playerViewModel = VideoPlayerViewModel()
+    let videoId: String
+    @ObservedObject var feedViewModel: VideoFeedViewModel
+    @StateObject private var playerViewModel: VideoPlayerViewModel
     @State private var isMuted = false
     @State private var isPlaying = true
     @State private var simulateOffline = false
+    let onLoadingStateChanged: (Bool) -> Void  // Add callback
+    @State private var loadError: Error?
 
     // Standard tab bar height
     private let tabBarHeight: CGFloat = 49
 
+    init(videoURL: URL,
+         videoId: String,
+         feedViewModel: VideoFeedViewModel,
+         onLoadingStateChanged: @escaping (Bool) -> Void = { _ in }) {
+        self.videoURL = videoURL
+        self.videoId = videoId
+        self.feedViewModel = feedViewModel
+        self.onLoadingStateChanged = onLoadingStateChanged
+        _playerViewModel = StateObject(wrappedValue: VideoPlayerViewModel())
+    }
+
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Replace VideoPlayer with custom player view
-                CustomVideoPlayer(player: playerViewModel.player) {
-                    isPlaying.toggle()
-                    if isPlaying {
-                        playerViewModel.player?.play()
-                    } else {
-                        playerViewModel.player?.pause()
+                if let error = loadError {
+                    VStack {
+                        Text("Failed to load video")
+                            .foregroundColor(.white)
+                        Text(error.localizedDescription)
+                            .foregroundColor(.gray)
+                            .font(.caption)
+                        Button("Retry") {
+                            Task {
+                                await loadVideo(from: videoURL)
+                            }
+                        }
+                        .foregroundColor(.white)
+                        .padding()
                     }
-                }
-                    .ignoresSafeArea(.all)
-                    .frame(width: geometry.size.width, height: geometry.size.height)
+                } else {
+                    // Replace VideoPlayer with custom player view
+                    CustomVideoPlayer(player: playerViewModel.player) {
+                        isPlaying.toggle()
+                        if isPlaying {
+                            playerViewModel.player?.play()
+                        } else {
+                            playerViewModel.player?.pause()
+                        }
+                    }
+                        .ignoresSafeArea(.all)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
 
-                // Overlay controls
-                VStack {
-                    // Top mute button
-                    HStack {
+                    // Overlay controls
+                    VStack {
+                        // Top mute button
+                        HStack {
+                            Spacer()
+                            Button(action: {
+                                isMuted.toggle()
+                                playerViewModel.player?.isMuted = isMuted
+                            }) {
+                                Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.fill")
+                                    .foregroundColor(.white)
+                                    .font(.system(size: 20))
+                                    .padding(12)
+                            }
+                        }
+                        .padding(.top, 48)
+
                         Spacer()
-                        Button(action: {
-                            isMuted.toggle()
-                            playerViewModel.player?.isMuted = isMuted
-                        }) {
-                            Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.fill")
-                                .foregroundColor(.white)
-                                .font(.system(size: 20))
-                                .padding(12)
+
+                        // Add debug button
+                        Button("Test Cache") {
+                            Task {
+                                await VideoCacheManager.shared.debugPrintCache()
+                            }
                         }
-                    }
-                    .padding(.top, 48)
+                        .padding()
+                        .background(Color.black.opacity(0.5))
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
 
-                    Spacer()
-
-                    // Add debug button
-                    Button("Test Cache") {
-                        Task {
-                            await VideoCacheManager.shared.debugPrintCache()
+                        // Add this button near the existing Test Cache button
+                        Button(simulateOffline ? "Online Mode" : "Offline Mode") {
+                            simulateOffline.toggle()
                         }
-                    }
-                    .padding()
-                    .background(Color.black.opacity(0.5))
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
+                        .padding()
+                        .background(Color.red.opacity(0.5))
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
 
-                    // Add this button near the existing Test Cache button
-                    Button(simulateOffline ? "Online Mode" : "Offline Mode") {
-                        simulateOffline.toggle()
-                    }
-                    .padding()
-                    .background(Color.red.opacity(0.5))
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
-
-                    // Add this button near the other test buttons
-                    Button("Clear Cache") {
-                        Task {
-                            await VideoCacheManager.shared.clearCache()
-                            await VideoCacheManager.shared.debugPrintCache()
+                        // Add this button near the other test buttons
+                        Button("Clear Cache") {
+                            Task {
+                                await VideoCacheManager.shared.clearCache()
+                                await VideoCacheManager.shared.debugPrintCache()
+                            }
                         }
-                    }
-                    .padding()
-                    .background(Color.orange.opacity(0.5))
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
+                        .padding()
+                        .background(Color.orange.opacity(0.5))
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
 
-                    // Progress bar above tab bar
-                    Rectangle()
-                        .fill(Color.white.opacity(0.2))
-                        .frame(height: 1.5)
-                        .overlay(
-                            Rectangle()
-                                .fill(Color.white.opacity(0.8))
-                                .frame(width: UIScreen.main.bounds.width * playerViewModel.progress)
-                                .frame(height: 1.5),
-                            alignment: .leading
-                        )
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 40) // Increased from 24 to 40 to clear the house icon
+                        // Progress bar above tab bar
+                        Rectangle()
+                            .fill(Color.white.opacity(0.2))
+                            .frame(height: 1.5)
+                            .overlay(
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.8))
+                                    .frame(width: UIScreen.main.bounds.width * playerViewModel.progress)
+                                    .frame(height: 1.5),
+                                alignment: .leading
+                            )
+                            .padding(.horizontal, 8)
+                            .padding(.bottom, 40) // Increased from 24 to 40 to clear the house icon
+                    }
+                    .padding(.bottom, tabBarHeight) // Reserve space for tab bar
                 }
-                .padding(.bottom, tabBarHeight) // Reserve space for tab bar
             }
         }
         .ignoresSafeArea(.all)
@@ -101,12 +133,40 @@ struct VideoPlayerView: View {
                 await loadVideo(from: videoURL)
             }
         }
+        .onChange(of: playerViewModel.player?.status) { _, _ in
+            if newValue == .readyToPlay {
+                onLoadingStateChanged(false)
+            }
+        }
+        .onChange(of: isPlaying) { _ in
+            // ...
+        }
         .onDisappear {
             playerViewModel.cleanup()
         }
     }
 
     private func loadVideo(from url: URL) async {
+        onLoadingStateChanged(true)
+
+        if let prefetchedItem = tryLoadPrefetchedItem() {
+            return
+        }
+
+        await loadFromCacheOrNetwork(url: url)
+    }
+
+    private func tryLoadPrefetchedItem() -> Bool {
+        if let prefetchedItem = feedViewModel.playerItem(for: videoId) {
+            print("🎯 Using prefetched video: \(videoId)")
+            playerViewModel.loadVideo(playerItem: prefetchedItem)
+            onLoadingStateChanged(false)
+            return true
+        }
+        return false
+    }
+
+    private func loadFromCacheOrNetwork(url: URL) async {
         let startTime = CFAbsoluteTimeGetCurrent()
         do {
             if simulateOffline {
@@ -130,7 +190,8 @@ struct VideoPlayerView: View {
             playerViewModel.loadVideo(url: cachedURL)
             print("Video load time: \(CFAbsoluteTimeGetCurrent() - startTime) seconds")
         } catch {
-            print("Error loading video: \(error)")
+            loadError = error
+            onLoadingStateChanged(false)
         }
     }
 }
@@ -181,46 +242,129 @@ struct CustomVideoPlayer: UIViewRepresentable {
 
 class VideoPlayerViewModel: ObservableObject {
     @Published var player: AVPlayer?
+    @Published var isReadyToPlay = false
     @Published var progress: Double = 0
     private var timeObserver: Any?
+    private var readyForDisplayObserver: NSKeyValueObservation?
+    private var statusObserver: NSKeyValueObservation?
 
     func loadVideo(url: URL) {
-        let playerItem = AVPlayerItem(url: url)
+        loadVideo(playerItem: AVPlayerItem(url: url))
+    }
+
+    func loadVideo(playerItem: AVPlayerItem) {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        print("🎬 Starting video load: \(CFAbsoluteTimeGetCurrent())")
+
+        setupInitialState(playerItem)
+        setupObservers(playerItem, startTime)
+        setupPlaybackBehavior(playerItem)
+    }
+
+    private func setupInitialState(_ playerItem: AVPlayerItem) {
+        isReadyToPlay = false
         player = AVPlayer(playerItem: playerItem)
-        player?.play()
+    }
 
-        // This time observer is probably generating lots of logs
-        timeObserver = player?.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
-            queue: .main
-        ) { [weak self] time in
-            guard let duration = self?.player?.currentItem?.duration.seconds,
-                  duration.isFinite && duration > 0
-            else { return }
-
-            DispatchQueue.main.async {
-                self?.progress = min(max(time.seconds / duration, 0), 1)
+    private func setupObservers(_ playerItem: AVPlayerItem, _ startTime: CFAbsoluteTimeTimeVal) {
+        // Status observer
+        statusObserver = playerItem.observe(\.status) { [weak self] item, _ in
+            if item.status == .readyToPlay {
+                self?.handleReadyToPlay()
             }
         }
 
-        // Loop video
+        // Display readiness observer
+        readyForDisplayObserver = playerItem.observe(\.isPlaybackLikelyToKeepUp) { [weak self] item, _ in
+            if item.isPlaybackLikelyToKeepUp {
+                let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+                print("📺 Video playback ready: \(elapsed) seconds")
+                self?.handleReadyToPlay()
+            }
+        }
+
+        // Progress observer
+        timeObserver = player?.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] time in
+            self?.updateProgress(time: time, item: playerItem)
+        }
+    }
+
+    private func updateProgress(time: CMTime, item: AVPlayerItem) {
+        let duration = item.duration
+        if duration.isValid && duration != .zero {
+            let durationSeconds = CMTimeGetSeconds(duration)
+            if durationSeconds.isFinite && durationSeconds > 0 {
+                self.progress = time.seconds / durationSeconds
+            }
+        }
+    }
+
+    private func setupPlaybackBehavior(_ playerItem: AVPlayerItem) {
+        if #available(iOS 16.0, *) {
+            setupModernPlaybackBehavior(playerItem)
+        } else {
+            setupLegacyPlaybackBehavior(playerItem)
+        }
+
+        // Loop behavior
         NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
             queue: .main
         ) { [weak self] _ in
-            self?.player?.seek(to: .zero)
-            self?.player?.play()
-            self?.progress = 0
+            self?.handlePlaybackEnd()
         }
     }
 
+    private func handlePlaybackEnd() {
+        player?.seek(to: .zero)
+        player?.play()
+        progress = 0
+    }
+
+    @available(iOS 16.0, *)
+    private func setupModernPlaybackBehavior(_ playerItem: AVPlayerItem) {
+        Task {
+            do {
+                _ = try await playerItem.asset.load(.isPlayable)
+                await MainActor.run {
+                    if playerItem.status == .readyToPlay {
+                        self.handleReadyToPlay()
+                    }
+                }
+            } catch {
+                print("❌ Failed to load asset: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func setupLegacyPlaybackBehavior(_ playerItem: AVPlayerItem) {
+        playerItem.asset.loadValuesAsynchronously(forKeys: ["playable"]) { [weak self] in
+            DispatchQueue.main.async {
+                if playerItem.status == .readyToPlay {
+                    self?.handleReadyToPlay()
+                }
+            }
+        }
+    }
+
+    private func handleReadyToPlay() {
+        guard !isReadyToPlay else { return }
+        isReadyToPlay = true
+        player?.play()
+    }
+
     func cleanup() {
+        statusObserver?.invalidate()
+        readyForDisplayObserver?.invalidate()
         if let timeObserver = timeObserver {
             player?.removeTimeObserver(timeObserver)
         }
         player?.pause()
         player = nil
-        progress = 0
+        isReadyToPlay = false
     }
 }

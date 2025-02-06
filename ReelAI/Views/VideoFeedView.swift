@@ -1,11 +1,12 @@
 import SwiftUI
-import FirebaseStorage
-import Network
-import FirebaseAuth
-import FirebaseDatabase
 
 struct VideoFeedView: View {
-    @StateObject private var feedViewModel = VideoFeedViewModel()
+    @StateObject private var viewModel: VideoFeedViewModel
+    @State private var lastVideoId: String?
+
+    init(viewModel: VideoFeedViewModel = VideoFeedViewModel()) {
+        _viewModel = StateObject(wrappedValue: viewModel)
+    }
 
     private func debugPrint(_ message: String) {
         print(message)
@@ -13,162 +14,144 @@ struct VideoFeedView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack {
-                TabView {
-                    ForEach(feedViewModel.videos) { video in
-                        VideoPlayerView(videoURL: video.url)
-                            .rotationEffect(.degrees(90))
-                            .frame(
-                                width: geometry.size.width,
-                                height: geometry.size.height
-                            )
-                            .onAppear {
-                                debugPrint("Rendering video: \(video.id)")
-                            }
-                    }
+            mainContent(geometry)
+        }
+        .ignoresSafeArea()
+        .animation(.smooth, value: viewModel.isLoading)
+        .onAppear {
+            viewModel.loadVideos()
+        }
+    }
+
+    @ViewBuilder
+    private func mainContent(_ geometry: GeometryProxy) -> some View {
+        ZStack {
+            videoTabView(geometry)
+
+            if viewModel.isLoading {
+                VideoLoadingView(message: viewModel.loadingMessage)
+                    .transition(.opacity)
+            }
+
+            if let error = viewModel.error {
+                errorView(error)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func videoTabView(_ geometry: GeometryProxy) -> some View {
+        TabView {
+            ForEach(viewModel.videos) { video in
+                VideoPlayerView(
+                    videoURL: video.videoURL,
+                    videoId: video.id ?? "",
+                    feedViewModel: viewModel
+                ) { isLoading in
+                    guard let videoId = video.id else { return }
+                    viewModel.trackVideoLoadTime(
+                        videoId: videoId,
+                        action: isLoading ? "start" : "end"
+                    )
                 }
-                .frame(
-                    width: geometry.size.height,
-                    height: geometry.size.width
-                )
-                .rotationEffect(.degrees(-90))
+                .rotationEffect(.degrees(90))
                 .frame(
                     width: geometry.size.width,
                     height: geometry.size.height
                 )
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .background(Color.black)
                 .onAppear {
-                    debugPrint("""
-                        VideoFeedView body called
-                        GeometryReader size: \(geometry.size)
-                        """)
-                }
+                    guard let videoId = video.id else { return }
+                    debugPrint("Rendering video: \(videoId)")
+                    viewModel.trackVideoLoadTime(videoId: videoId, action: "start")
+                    viewModel.prefetchVideos(after: videoId)
 
-                if let error = feedViewModel.error {
-                    VStack {
-                        Text(error)
-                            .foregroundColor(.white)
-                            .padding()
-                            .background(Color.black.opacity(0.7))
-                            .cornerRadius(10)
-
-                        Button("Retry") {
-                            feedViewModel.reset()
-                        }
-                        .foregroundColor(.white)
-                        .padding()
+                    if videoId == viewModel.videos[max(0, viewModel.videos.count - 3)].id {
+                        viewModel.loadNextBatch()
                     }
+
+                    if let lastId = lastVideoId {
+                        viewModel.updateScrollDirection(from: lastId, to: videoId)
+                    }
+                    lastVideoId = videoId
+                }
+                .onDisappear {
+                    guard let videoId = video.id else { return }
+                    viewModel.trackVideoLoadTime(videoId: videoId, action: "end")
+                    viewModel.cleanupCache(keeping: videoId)
                 }
             }
         }
-        .ignoresSafeArea()
-        .onAppear {
-            // For testing, let's add a sample video
-            feedViewModel.loadVideos()
+        .frame(
+            width: geometry.size.height,
+            height: geometry.size.width
+        )
+        .rotationEffect(.degrees(-90))
+        .frame(
+            width: geometry.size.width,
+            height: geometry.size.height
+        )
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .background(Color.black)
+    }
+
+    @ViewBuilder
+    private func errorView(_ error: String) -> some View {
+        VStack {
+            Text(error)
+                .foregroundColor(.white)
+                .padding()
+                .background(Color.black.opacity(0.7))
+                .cornerRadius(10)
+
+            Button("Retry") {
+                viewModel.reset()
+            }
+            .foregroundColor(.white)
+            .padding()
         }
     }
 }
 
-struct Video: Identifiable {
-    let id: String
-    let url: URL
-    // Add more metadata as needed
+#Preview {
+    VideoFeedView()
 }
 
-class VideoFeedViewModel: ObservableObject {
-    @Published var videos: [Video] = []
-    @Published var error: String?
-    private let db = Database.database().reference()
-    private var retryCount = 0
-    private let maxRetries = 3
+#Preview("Loading State") {
+    let viewModel = VideoFeedViewModel()
+    viewModel.isLoading = true
+    return VideoFeedView(viewModel: viewModel)
+}
 
-    func loadVideos() {
-        loadVideosWithRetry()
-    }
+#Preview("Error State") {
+    let viewModel = VideoFeedViewModel()
+    viewModel.error = "Network connection unavailable"
+    return VideoFeedView(viewModel: viewModel)
+}
 
-    private func loadVideosWithRetry(delay: TimeInterval = 1.0) {
-        print("📡 Attempt \(retryCount + 1) of \(maxRetries + 1) to load videos...")
-
-        let monitor = NWPathMonitor()
-        monitor.pathUpdateHandler = { [weak self] path in
-            guard let self = self else { return }
-            print("🌐 Network status: \(path.status)")
-            print("🌐 Network available: \(path.status == .satisfied)")
-
-            if path.status == .satisfied {
-                self.fetchVideos()
-            } else if self.retryCount < self.maxRetries {
-                self.retryCount += 1
-                let nextDelay = delay * 2 // Exponential backoff
-                print("⏳ Retrying in \(nextDelay) seconds...")
-                DispatchQueue.main.asyncAfter(deadline: .now() + nextDelay) {
-                    self.loadVideosWithRetry(delay: nextDelay)
-                }
-            } else {
-                print("❌ Failed to connect after \(self.maxRetries + 1) attempts")
-                DispatchQueue.main.async {
-                    self.error = "Network connection unavailable"
-                }
-            }
+#if DEBUG
+extension VideoFeedViewModel {
+    static var mock: VideoFeedViewModel {
+        let model = VideoFeedViewModel()
+        if let url = URL(string: "https://example.com/1.mp4"),
+           let thumbUrl = URL(string: "https://example.com/1.jpg") {
+            model.videos = [
+                Video(
+                    id: "1",
+                    userId: "user1",
+                    videoURL: url,
+                    thumbnailURL: thumbUrl,
+                    createdAt: Date()
+                )
+            ]
         }
-        monitor.start(queue: DispatchQueue.global())
+        return model
     }
+}
+#endif
 
-    private func fetchVideos() {
-        print("📡 Fetching videos using Firebase Realtime DB")
-        db.child("videos")
-            .queryOrdered(byChild: "timestamp")
-            .observe(.value) { [weak self] snapshot in
-                guard let self = self else { return }
-
-                guard let videosDict = snapshot.value as? [String: [String: Any]] else {
-                    print("❌ No videos found or wrong data format")
-                    return
-                }
-
-                print("📄 Got videos: \(videosDict.count)")
-
-                Task {
-                    let loadedVideos: [Video] = try await withThrowingTaskGroup(of: Video?.self) { group -> [Video] in
-                        var videos: [Video] = []
-
-                        for (id, data) in videosDict {
-                            if let videoName = data["videoName"] as? String {
-                                group.addTask {
-                                    print("🔄 Fetching URL for video: \(videoName)")
-                                    let storage = Storage.storage().reference()
-                                    let videoRef = storage.child("videos/\(videoName)")
-                                    if let url = try? await videoRef.downloadURL() {
-                                        print("✅ Got URL for video: \(videoName)")
-                                        return Video(id: id, url: url)
-                                    }
-                                    print("❌ Failed to get URL for video: \(videoName)")
-                                    return nil
-                                }
-                            }
-                        }
-
-                        for try await video in group {
-                            if let video = video {
-                                videos.append(video)
-                                print("➕ Added video to list: \(video.id)")
-                            }
-                        }
-                        return videos
-                    }
-
-                    await MainActor.run {
-                        print("📱 Updating UI with \(loadedVideos.count) videos")
-                        self.videos = loadedVideos.shuffled()
-                    }
-                }
-            }
-    }
-
-    func reset() {
-        retryCount = 0
-        error = nil
-        loadVideos()
+// Helper extension
+extension Array {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }

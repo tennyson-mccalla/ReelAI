@@ -24,47 +24,51 @@ struct ReelAIApp: App {
     @StateObject private var authViewModel = AuthViewModel()
 
     init() {
-        print("ReelAIApp: Initializing") // Debug print
+        print("ReelAIApp: Initializing")
     }
 
     var body: some Scene {
         WindowGroup {
-            _ = print("ReelAIApp: Building view hierarchy") // Debug print
-            _ = print("Auth state: \(authViewModel.isAuthenticated)") // Debug print
-            if authViewModel.isAuthenticated {
-                _ = print("ReelAIApp: Showing TabView") // Debug print
-                TabView {
-                    VideoFeedView()
-                        .tabItem {
-                            Label("Home", systemImage: "house.fill")
-                        }
+            Group {
+                if authViewModel.isAuthenticated {
+                    TabView {
+                        VideoFeedView()
+                            .tabItem {
+                                Label("Home", systemImage: "house.fill")
+                            }
 
-                    PlaceholderView(feature: "Friends")
-                        .tabItem {
-                            Label("Friends", systemImage: "person.2.fill")
-                        }
+                        PlaceholderView(feature: "Friends")
+                            .tabItem {
+                                Label("Friends", systemImage: "person.2.fill")
+                            }
 
-                    VideoUploadView()
-                        .tabItem {
-                            Label("Create", systemImage: "plus.circle.fill")
-                        }
+                        VideoUploadView()
+                            .tabItem {
+                                Label("Create", systemImage: "plus.circle.fill")
+                            }
 
-                    PlaceholderView(feature: "Messages")
-                        .tabItem {
-                            Label("Messages", systemImage: "message.fill")
-                        }
+                        PlaceholderView(feature: "Messages")
+                            .tabItem {
+                                Label("Messages", systemImage: "message.fill")
+                            }
 
-                    PlaceholderView(feature: "Profile")
-                        .tabItem {
-                            Label("Profile", systemImage: "person.circle.fill")
-                        }
+                        ProfileView()
+                            .tabItem {
+                                Label("Profile", systemImage: "person.circle.fill")
+                            }
+                    }
+                    .tint(.blue)
+                    .background(Color.black)
+                    .ignoresSafeArea(.all)
+                    .onAppear { print("ReelAIApp: Showing TabView") }
+                } else {
+                    AuthView()
+                        .onAppear { print("ReelAIApp: Showing AuthView") }
                 }
-                .tint(.blue)
-                .background(Color.black)
-                .ignoresSafeArea(.all)
-            } else {
-                _ = print("ReelAIApp: Showing AuthView") // Debug print
-                AuthView()
+            }
+            .onAppear {
+                print("ReelAIApp: Building view hierarchy")
+                print("Auth state: \(authViewModel.isAuthenticated)")
             }
         }
         .environmentObject(authViewModel)

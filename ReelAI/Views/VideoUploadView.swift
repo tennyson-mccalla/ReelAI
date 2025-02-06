@@ -5,12 +5,14 @@ struct VideoUploadView: View {
     @StateObject private var viewModel = VideoUploadViewModel()
     @EnvironmentObject var authViewModel: AuthViewModel
     @State private var showingPhotoPicker = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationView {
             ZStack {  // Add ZStack to layer views
                 VStack(spacing: 20) {
                     SignOutButton(action: authViewModel.signOut)
+                        .allowsHitTesting(true) // Always allow sign out
                     VideoPreviewSection(
                         thumbnail: viewModel.thumbnailImage,
                         onTap: { showingPhotoPicker = true }
@@ -40,10 +42,13 @@ struct VideoUploadView: View {
                     Spacer()
                 }
                 .navigationTitle("Upload Video")
+                .navigationDestination(isPresented: $viewModel.shouldNavigateToProfile) {
+                    ProfileView()
+                }
                 .sheet(isPresented: $showingPhotoPicker) {
                     VideoPicker(viewModel: viewModel)
                 }
-                .disabled(viewModel.isUploading)  // Disable entire view during upload
+                .disabled(viewModel.isUploading && !viewModel.shouldNavigateToProfile)
 
                 // Overlay cancel button when uploading
                 if viewModel.isUploading {
@@ -64,6 +69,11 @@ struct VideoUploadView: View {
                     .onAppear {
                         print("📱 Cancel overlay appeared")
                     }
+                }
+            }
+            .onChange(of: viewModel.shouldNavigateToProfile) { shouldNavigate in
+                if shouldNavigate {
+                    dismiss()  // Now dismiss will be in scope
                 }
             }
         }
