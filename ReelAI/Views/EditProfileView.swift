@@ -40,6 +40,10 @@ struct EditProfileView: View {
                 ForEach($viewModel.profile.socialLinks) { $link in
                     SocialLinkRow(link: $link)
                 }
+
+                Button(action: addSocialLink) {
+                    Label("Add Social Link", systemImage: "plus.circle.fill")
+                }
             }
         }
         .navigationTitle("Edit Profile")
@@ -72,6 +76,15 @@ struct EditProfileView: View {
             Text(viewModel.error?.localizedDescription ?? "Unknown error")
         }
         .disabled(viewModel.isLoading)
+    }
+
+    private func addSocialLink() {
+        viewModel.profile.socialLinks.append(
+            UserProfile.SocialLink(
+                platform: UserProfile.SocialLink.supportedPlatforms[0],
+                url: ""
+            )
+        )
     }
 }
 
@@ -112,13 +125,19 @@ private struct SocialLinkRow: View {
 
     var body: some View {
         HStack {
-            Picker("Platform", selection: $link.platform) {
-                ForEach(UserProfile.SocialLink.Platform.allCases, id: \.self) { platform in
-                    Text(platform.rawValue.capitalized)
-                        .tag(platform)
+            Menu {
+                ForEach(UserProfile.SocialLink.supportedPlatforms, id: \.self) { platform in
+                    Button(platform) {
+                        link = UserProfile.SocialLink(
+                            platform: platform,
+                            url: link.url
+                        )
+                    }
                 }
+            } label: {
+                Text(link.platform)
+                    .foregroundColor(.primary)
             }
-            .labelsHidden()
 
             TextField("URL", text: $link.url)
                 .textContentType(.URL)

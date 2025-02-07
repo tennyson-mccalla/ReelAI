@@ -36,60 +36,62 @@ struct ReelAIApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                if authViewModel.isAuthenticated {
-                    TabView {
-                        NavigationStack {
-                            VideoFeedView()
-                        }
-                        .tabItem {
-                            Label("Home", systemImage: "house.fill")
-                        }
+            ZStack {
+                Group {
+                    if authViewModel.isAuthenticated {
+                        TabView {
+                            NavigationStack {
+                                VideoFeedView()
+                            }
+                            .tabItem {
+                                Label("Home", systemImage: "house.fill")
+                            }
 
-                        NavigationStack {
-                            Text("Friends Coming Soon")
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .background(Color.black)
-                        }
-                        .tabItem {
-                            Label("Friends", systemImage: "person.2.fill")
-                        }
+                            NavigationStack {
+                                Text("Friends Coming Soon")
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(Color.black)
+                            }
+                            .tabItem {
+                                Label("Friends", systemImage: "person.2.fill")
+                            }
 
-                        NavigationStack {
-                            VideoUploadView()
-                        }
-                        .tabItem {
-                            Label("Create", systemImage: "plus.circle.fill")
-                        }
+                            NavigationStack {
+                                VideoUploadView()
+                            }
+                            .tabItem {
+                                Label("Create", systemImage: "plus.circle.fill")
+                            }
 
-                        NavigationStack {
-                            Text("Messages Coming Soon")
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .background(Color.black)
-                        }
-                        .tabItem {
-                            Label("Messages", systemImage: "message.fill")
-                        }
+                            NavigationStack {
+                                Text("Messages Coming Soon")
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(Color.black)
+                            }
+                            .tabItem {
+                                Label("Messages", systemImage: "message.fill")
+                            }
 
-                        NavigationStack {
-                            ProfileView()
+                            NavigationStack {
+                                ProfileView()
+                            }
+                            .tabItem {
+                                Label("Profile", systemImage: "person.circle.fill")
+                            }
                         }
-                        .tabItem {
-                            Label("Profile", systemImage: "person.circle.fill")
-                        }
+                        .tint(.blue)
+                    } else {
+                        AuthView()
                     }
-                    .tint(.blue)
-                } else {
-                    AuthView()
+                }
+                .onAppear {
+                    print("ReelAIApp: Building view hierarchy")
+                    print("Auth state: \(authViewModel.isAuthenticated)")
                 }
             }
-            .onAppear {
-                print("ReelAIApp: Building view hierarchy")
-                print("Auth state: \(authViewModel.isAuthenticated)")
-            }
+            .environmentObject(authViewModel)
         }
-        .environmentObject(authViewModel)
     }
 }

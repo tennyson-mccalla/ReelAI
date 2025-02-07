@@ -12,6 +12,9 @@ struct VideoPlayerView: View {
     @State private var playerState = PlayerState()
     let onLoadingStateChanged: (Bool) -> Void
 
+    // Add this to get window scene safe area
+    @Environment(\.safeAreaInsets) private var safeAreaInsets
+
     // Standard tab bar height
     private let tabBarHeight: CGFloat = 49
 
@@ -69,7 +72,7 @@ struct VideoPlayerView: View {
                     ProgressBar(progress: playerViewModel.progress)
                         .frame(height: 2)
                         .frame(maxHeight: .infinity, alignment: .bottom)
-                        .padding(.bottom, 4)
+                        .padding(.bottom, geometry.safeAreaInsets.bottom + tabBarHeight + 95)
                 }
             }
             .onChange(of: geometry.frame(in: .global).minY) { _, newY in
@@ -158,5 +161,22 @@ struct VideoPlayerView: View {
             playerState.error = error
             onLoadingStateChanged(false)
         }
+    }
+}
+
+// Add this extension to get safe area insets
+private extension EnvironmentValues {
+    var safeAreaInsets: EdgeInsets {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first else {
+            return .init()
+        }
+        return window.safeAreaInsets.insets
+    }
+}
+
+private extension UIEdgeInsets {
+    var insets: EdgeInsets {
+        EdgeInsets(top: top, leading: left, bottom: bottom, trailing: right)
     }
 }
