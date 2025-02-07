@@ -58,6 +58,7 @@ actor VideoCacheManager {
         case fileNotFound
         case invalidData
         case downloadFailed
+        case thumbnailConversionFailed
     }
     
     // MARK: - Helper Methods
@@ -148,24 +149,20 @@ actor VideoCacheManager {
     }
     
     func cacheThumbnail(_ image: UIImage, withIdentifier id: String) async throws -> URL {
-        let cachedFileURL = getThumbnailCacheURL(forIdentifier: id, fileExtension: "jpg")
+        let thumbnailURL = thumbnailCacheDirectory.appendingPathComponent("\(id).jpg")
         
-        // Check if already cached
-        if fileExists(at: cachedFileURL) {
-            logger.debug("Thumbnail already cached for id: \(id)")
-            return cachedFileURL
+        if fileManager.fileExists(atPath: thumbnailURL.path) {
+            logger.debug("Found cached thumbnail for id: \(id)")
+            return thumbnailURL
         }
         
-        // Convert to JPEG data
-        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-            throw VideoCacheError.invalidData
+        guard let data = image.jpegData(compressionQuality: 0.8) else {
+            throw VideoCacheError.thumbnailConversionFailed
         }
         
-        // Write to cache
-        try saveData(imageData, to: cachedFileURL)
-        logger.debug("Cached new thumbnail for id: \(id)")
-        
-        return cachedFileURL
+        try data.write(to: thumbnailURL)
+        logger.info("Cached new thumbnail for id: \(id)")
+        return thumbnailURL
     }
     
     func clearCache() async throws {
@@ -219,16 +216,25 @@ actor VideoCacheManager {
                 let videoFiles = try fileManager.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: [.fileSizeKey])
                 
                 let thumbnailSize = thumbnailFiles.reduce(0) { total, url in
-                    (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) ?? 0 + total
+                    guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return total }
+                    return total + size
                 }
                 let videoSize = videoFiles.reduce(0) { total, url in
-                    (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) ?? 0 + total
+                    guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return total }
+                    return total + size
                 }
                 
                 logger.info("""
                     📂 Cache Status:
-                    Thumbnails: \(thumbnailFiles.count) files (\(ByteCountFormatter.string(fromByteCount: Int64(thumbnailSize), countStyle: .file)))
-                    Videos: \(videoFiles.count) files (\(ByteCountFormatter.string(fromByteCount: Int64(videoSize), countStyle: .file)))
+                    Cache directories:
+                      Thumbnails: \(thumbnailCacheDirectory.path)
+                      Videos: \(cacheDirectory.path)
+                    Contents:
+                      Thumbnails: \(thumbnailFiles.count) files (\(ByteCountFormatter.string(fromByteCount: Int64(thumbnailSize), countStyle: .file)))
+                      Videos: \(videoFiles.count) files (\(ByteCountFormatter.string(fromByteCount: Int64(videoSize), countStyle: .file)))
+                    Files:
+                      Thumbnails: \(thumbnailFiles.map { $0.lastPathComponent }.joined(separator: ", "))
+                      Videos: \(videoFiles.map { $0.lastPathComponent }.joined(separator: ", "))
                     """)
             } catch {
                 logger.error("Failed to get cache status: \(error.localizedDescription)")
