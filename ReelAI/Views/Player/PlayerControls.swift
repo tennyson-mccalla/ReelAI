@@ -74,8 +74,12 @@ struct PlayerControls: View {
 
             Button("Clear Cache") {
                 Task {
-                    await VideoCacheManager.shared.clearCache()
-                    await VideoCacheManager.shared.logCacheStatus()
+                    do {
+                        try await VideoCacheManager.shared.clearCache()
+                        await VideoCacheManager.shared.logCacheStatus()
+                    } catch {
+                        print("Failed to clear cache: \(error.localizedDescription)")
+                    }
                 }
             }
             .padding()
