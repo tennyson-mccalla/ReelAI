@@ -7,7 +7,11 @@ import FirebaseDatabase
 struct ProfileView: View {
     @StateObject private var viewModel: ProfileViewModel
     @EnvironmentObject private var authViewModel: AuthViewModel
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 1), count: 3)
+    private let columns = [
+        GridItem(.flexible()),
+        GridItem(.flexible()),
+        GridItem(.flexible())
+    ]
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfileView")
     
     init(viewModel: ProfileViewModel? = nil) {
@@ -63,14 +67,14 @@ struct ProfileView: View {
         .padding(1)
     }
     
-    private var gridItems: [GridItem] {
+    private var gridItems: [ProfileGridItem] {
         if viewModel.videos.isEmpty && viewModel.isLoading {
             return (0..<12).map { _ in
-                GridItem(placeholder: true)
+                ProfileGridItem(placeholder: true)
             }
         } else {
             return viewModel.videos.map { video in
-                GridItem(video: video)
+                ProfileGridItem(video: video)
             }
         }
     }
@@ -88,7 +92,7 @@ struct ProfileView: View {
 
 // MARK: - Helper Types
 private extension ProfileView {
-    struct GridItem: View {
+    struct ProfileGridItem: View {
         let video: Video?
         let isPlaceholder: Bool
         
@@ -99,7 +103,7 @@ private extension ProfileView {
         
         init(placeholder: Bool) {
             self.video = nil
-            self.isPlaceholder = true
+            self.isPlaceholder = placeholder
         }
         
         var body: some View {
