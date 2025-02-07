@@ -105,7 +105,7 @@ struct CacheDebugButtons: View {
         HStack {
             Button(action: {
                 Task {
-                    VideoCacheManager.shared.logCacheStatus()
+                    await VideoCacheManager.shared.logCacheStatus()
                 }
             }) {
                 Label("Cache Status", systemImage: "info.circle")
@@ -118,6 +118,8 @@ struct CacheDebugButtons: View {
             Button(action: {
                 Task {
                     try? await VideoCacheManager.shared.clearCache()
+                    // Reload is faster because videos are already in memory,
+                    // we just need to reload thumbnails from network
                     await viewModel.loadVideos()
                 }
             }) {

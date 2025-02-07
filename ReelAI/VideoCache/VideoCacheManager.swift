@@ -13,15 +13,13 @@ actor VideoCacheManager {
     private let thumbnailCacheDirectory: URL
     private let maxCacheSize: UInt64 = 500 * 1024 * 1024  // 500MB default
     private let maxThumbnailCacheSize: UInt64 = 50 * 1024 * 1024  // 50MB default
+    
+    // Use actor-isolated property for thread safety
+    private var hasLoggedInitialStatus = false
 
     static let shared: VideoCacheManager = {
         do {
-            let manager = try VideoCacheManager()
-            // Log initial cache status
-            Task {
-                await manager.logInitialStatus()
-            }
-            return manager
+            return try VideoCacheManager()
         } catch {
             fatalError("Failed to initialize VideoCacheManager: \(error)")
         }
@@ -53,16 +51,19 @@ actor VideoCacheManager {
             try Data().write(to: nomediaPath)
         }
 
-        // Log cache status on initialization
-        logger.info("📂 Cache initialized at:")
-        logger.info("   Video cache: \(self.videoCacheDirectory.path)")
-        logger.info("   Thumbnail cache: \(self.thumbnailCacheDirectory.path)")
+        // Log initial status in next run loop to ensure proper initialization
+        Task { [self] in
+            await checkAndLogInitialStatus()
+        }
     }
 
-    private func logInitialStatus() async {
+    private func checkAndLogInitialStatus() async {
+        guard !hasLoggedInitialStatus else { return }
+        hasLoggedInitialStatus = true
+        
         let message = "📱 VideoCacheManager initialized"
-        logger.info("\(message)")
         print(message)
+        logger.info("\(message)")
         logCacheStatus()
     }
 
@@ -193,8 +194,8 @@ actor VideoCacheManager {
         
         // Log status after clearing
         let message = "Cache cleared successfully"
-        logger.info("\(message)")
         print(message)
+        logger.info("\(message)")
         logCacheStatus()
     }
 
@@ -204,8 +205,8 @@ actor VideoCacheManager {
             try removeFile(at: url)
         }
         let message = "Video cache cleared (\(contents.count) files)"
-        logger.info("\(message)")
         print(message)
+        logger.info("\(message)")
     }
 
     func clearThumbnailCache() async throws {
@@ -216,8 +217,8 @@ actor VideoCacheManager {
             count += 1
         }
         let message = "Thumbnail cache cleared (\(count) files)"
-        logger.info("\(message)")
         print(message)
+        logger.info("\(message)")
     }
 
     func removeVideo(withIdentifier id: String) async throws {
@@ -277,12 +278,15 @@ actor VideoCacheManager {
                       Videos: \(videoFiles.map { $0.lastPathComponent }.sorted().joined(separator: ", "))
                     """
                 
+                // Always print to console for visibility during development
+                print(status)
+                
+                // Use os_log for system logging
                 logger.info("\(status)")
-                print(status) // Also print to console for debugging
             } catch {
                 let errorMsg = "Failed to get cache status: \(error.localizedDescription)"
+                print(errorMsg)
                 logger.error("\(errorMsg)")
-                print(errorMsg) // Also print to console for debugging
             }
         }
     }
