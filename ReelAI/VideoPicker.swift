@@ -1,87 +1,82 @@
 import SwiftUI
 import PhotosUI
-import UniformTypeIdentifiers
+import AVFoundation
+import UniformTypeIdentifiers  // Add back for UTType
 
 struct VideoPicker: UIViewControllerRepresentable {
     @ObservedObject var viewModel: VideoUploadViewModel
-    @Environment(\.presentationMode) var presentationMode
-    
+
     func makeUIViewController(context: Context) -> PHPickerViewController {
-        var config = PHPickerConfiguration()
-        config.filter = .videos
+        var config = PHPickerConfiguration(photoLibrary: .shared())
         config.selectionLimit = 1
-        
+        config.filter = .videos
+
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator
         return picker
     }
-    
+
     func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
-    
+
     func makeCoordinator() -> Coordinator {
-        Coordinator(self)
+        Coordinator(parent: self)
     }
-    
+
     class Coordinator: NSObject, PHPickerViewControllerDelegate {
         let parent: VideoPicker
-        
-        init(_ parent: VideoPicker) {
+
+        init(parent: VideoPicker) {
             self.parent = parent
         }
-        
+
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            print("📱 Video picker finished with \(results.count) results")
-            parent.presentationMode.wrappedValue.dismiss()
-            
+            picker.dismiss(animated: true)
+
             guard let provider = results.first?.itemProvider else {
-                print("❌ No item provider found")
+                parent.viewModel.setError("No video selected")
                 return
             }
-            
-            // Check for video type identifier
-            if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
-                print("📱 Loading video file")
+
+            if provider.canLoadObject(ofClass: URL.self) {
                 provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
                     if let error = error {
-                        DispatchQueue.main.async {
-                            print("❌ Error loading video: \(error.localizedDescription)")
-                            self.parent.viewModel.errorMessage = error.localizedDescription
+                        Task { @MainActor in
+                            self.parent.viewModel.setError(error.localizedDescription)
                         }
                         return
                     }
-                    
+
                     guard let url = url else {
-                        print("❌ No URL received")
+                        Task { @MainActor in
+                            self.parent.viewModel.setError("Could not load video")
+                        }
                         return
                     }
-                    
-                    // Create a local copy of the video
-                    let fileName = url.lastPathComponent
-                    let localURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-                    
+
+                    // Copy to temporary location
+                    let tempURL = FileManager.default.temporaryDirectory
+                        .appendingPathComponent(UUID().uuidString)
+                        .appendingPathExtension("mp4")
+
                     do {
-                        // Remove any existing file
-                        try? FileManager.default.removeItem(at: localURL)
-                        // Copy the file to our temporary directory
-                        try FileManager.default.copyItem(at: url, to: localURL)
-                        
-                        DispatchQueue.main.async {
-                            print("✅ Got video URL: \(localURL)")
-                            self.parent.viewModel.setSelectedVideo(url: localURL)
+                        try FileManager.default.copyItem(at: url, to: tempURL)
+                        Task { @MainActor in
+                            self.parent.viewModel.setSelectedVideo(url: tempURL)
                         }
                     } catch {
-                        DispatchQueue.main.async {
-                            print("❌ Error copying video: \(error.localizedDescription)")
-                            self.parent.viewModel.errorMessage = "Error preparing video: \(error.localizedDescription)"
+                        Task { @MainActor in
+                            self.parent.viewModel.setError("Could not copy video: \(error.localizedDescription)")
                         }
                     }
-                }
-            } else {
-                print("❌ Selected item is not a video")
-                DispatchQueue.main.async {
-                    self.parent.viewModel.errorMessage = "Please select a video file"
                 }
             }
         }
     }
-} 
+}
+
+#Preview {
+    Color.clear // VideoPicker needs to be presented in a sheet
+        .sheet(isPresented: .constant(true)) {
+            VideoPicker(viewModel: VideoUploadViewModel())
+        }
+}

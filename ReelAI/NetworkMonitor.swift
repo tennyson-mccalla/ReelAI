@@ -2,6 +2,7 @@ import Foundation
 import Network
 import Combine
 import SwiftUI
+import os
 
 class NetworkMonitor: ObservableObject {
     static let shared = NetworkMonitor()
@@ -21,8 +22,10 @@ class NetworkMonitor: ObservableObject {
                 self?.isConstrained = path.isConstrained
                 self?.connectionType = path.availableInterfaces.first?.type ?? .other
 
-                print("📱 Network status: \(path.status == .satisfied ? "Connected" : "Disconnected")")
-                // Convert interface type to string manually
+                // Use os.Logger for structured logging.
+                let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "NetworkMonitor")
+                logger.info("Network status: \(path.status == .satisfied ? "Connected" : "Disconnected")")
+
                 let connectionTypeString: String = {
                     guard let type = path.availableInterfaces.first?.type else { return "unknown" }
                     switch type {
@@ -34,7 +37,7 @@ class NetworkMonitor: ObservableObject {
                     @unknown default: return "unknown"
                     }
                 }()
-                print("📱 Connection type: \(connectionTypeString)")
+                logger.info("Connection type: \(connectionTypeString)")
             }
         }
         monitor.start(queue: queue)

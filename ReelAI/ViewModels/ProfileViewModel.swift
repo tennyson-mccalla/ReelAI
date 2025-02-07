@@ -13,16 +13,28 @@ class ProfileViewModel: ObservableObject {
     let authService: AuthServiceProtocol
     private let db = Database.database().reference()
     private let storage = Storage.storage().reference()
+    private let _storageManager: StorageManager
+    private let _databaseManager: DatabaseManager
+    private var currentProfile: UserProfile
 
     private var thumbnailCache: [TimeInterval: StorageReference]?
 
-    init(authService: AuthServiceProtocol = FirebaseAuthService()) {
+    init(
+        authService: AuthServiceProtocol,
+        storage: StorageManager = FirebaseStorageManager(),
+        database: DatabaseManager = FirebaseDatabaseManager(),
+        initialProfile: UserProfile
+    ) {
         self.authService = authService
+        self._storageManager = storage
+        self._databaseManager = database
+        self.currentProfile = initialProfile
     }
 
     static func createDefault() async -> ProfileViewModel {
         return ProfileViewModel(
-            authService: FirebaseAuthService()
+            authService: FirebaseAuthService(),
+            initialProfile: UserProfile.mock
         )
     }
 
@@ -65,7 +77,10 @@ class ProfileViewModel: ObservableObject {
                         userId: data["userId"] as? String ?? userId,
                         videoURL: videoURL,
                         thumbnailURL: thumbnailURL,
-                        createdAt: Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000.0)
+                        createdAt: Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000.0),
+                        caption: data["caption"] as? String ?? "",
+                        likes: data["likes"] as? Int ?? 0,
+                        comments: data["comments"] as? Int ?? 0
                     )
                     loadedVideos.append(video)
                 } catch {
@@ -102,9 +117,9 @@ class ProfileViewModel: ObservableObject {
         let thumbnails = try await storage.child("thumbnails").listAll()
         var cache: [TimeInterval: StorageReference] = [:]
 
-        for item in thumbnails.items where (try? await item.getMetadata())?.timeCreated != nil {
-            let metadata = try await item.getMetadata()
-            if let created = metadata.timeCreated {
+        for item in thumbnails.items {
+            if let metadata = try? await item.getMetadata(),
+               let created = metadata.timeCreated {
                 cache[created.timeIntervalSince1970] = item
             }
         }
@@ -113,23 +128,60 @@ class ProfileViewModel: ObservableObject {
     }
 
     private func getThumbnailURL(for videoName: String, timestamp: TimeInterval) async throws -> URL {
-        // Try exact UUID match first
         let baseVideoName = videoName.replacingOccurrences(of: ".mp4", with: "")
         let newPatternRef = storage.child("thumbnails/\(baseVideoName).jpg")
 
         do {
             return try await newPatternRef.downloadURL()
-        } catch {
-            // Fall back to timestamp matching
+        } catch let downloadError {
             try await loadThumbnailCache()
-            guard let cache = thumbnailCache else { throw error }
+            guard let cache = thumbnailCache else { throw downloadError }
 
-            // Find thumbnail within 2 seconds of video timestamp
             for (thumbTimestamp, thumbnailRef) in cache where abs(thumbTimestamp - timestamp) < 2.0 {
                 return try await thumbnailRef.downloadURL()
             }
 
-            throw error
+            throw downloadError
         }
+    }
+
+    private func processVideos(from dict: [String: [String: Any]]) async throws -> [Video] {
+        var videos: [Video] = []
+
+        for (id, data) in dict {
+            if let userId = data["userId"] as? String,
+               let videoURLString = data["videoURL"] as? String,
+               let videoURL = URL(string: videoURLString),
+               let thumbnailURLString = data["thumbnailURL"] as? String,
+               let thumbnailURL = URL(string: thumbnailURLString),
+               let timestamp = data["timestamp"] as? TimeInterval {
+
+                let video = Video(
+                    id: id,
+                    userId: userId,
+                    videoURL: videoURL,
+                    thumbnailURL: thumbnailURL,
+                    createdAt: Date(timeIntervalSince1970: timestamp),
+                    caption: data["caption"] as? String ?? "",
+                    likes: data["likes"] as? Int ?? 0,
+                    comments: data["comments"] as? Int ?? 0
+                )
+                videos.append(video)
+            }
+        }
+
+        return videos.sorted(by: { $0.createdAt > $1.createdAt })
+    }
+
+    public var profile: UserProfile {
+        return currentProfile
+    }
+
+    public var storageManager: StorageManager {
+        return _storageManager
+    }
+
+    public var databaseManager: DatabaseManager {
+        return _databaseManager
     }
 }

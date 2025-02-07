@@ -5,17 +5,20 @@ struct ProfileView: View {
     @StateObject private var viewModel: ProfileViewModel
     @Environment(\.refresh) private var refresh
     @EnvironmentObject var authViewModel: AuthViewModel
+    @State private var isEditingProfile = false
 
     init(viewModel: ProfileViewModel? = nil) {
         let wrappedValue = viewModel ?? ProfileViewModel(
-            authService: FirebaseAuthService()
+            authService: FirebaseAuthService(),
+            initialProfile: UserProfile.mock
         )
         _viewModel = StateObject(wrappedValue: wrappedValue)
     }
 
     var body: some View {
         ScrollView {
-            VStack {
+            VStack(spacing: 16) {
+                // Sign Out Button
                 HStack {
                     Spacer()
                     Button("Sign Out") {
@@ -25,117 +28,60 @@ struct ProfileView: View {
                     .padding()
                 }
 
-                LazyVStack(spacing: 16) {
-                    userInfoSection
-                    videoGrid
+                // User Info
+                if let email = viewModel.authService.currentUser?.email {
+                    Text(email)
+                        .font(.headline)
                 }
+
+                // Video Grid
+                if !viewModel.videos.isEmpty {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 2) {
+                        ForEach(viewModel.videos) { video in
+                            VideoThumbnailView(video: video)
+                                .aspectRatio(9/16, contentMode: .fill)
+                                .clipped()
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                }
+            }
+        }
+        .overlay {
+            if viewModel.isLoading {
+                ProgressView()
             }
         }
         .refreshable {
             await viewModel.loadVideos()
         }
-        .overlay(overlayView)
         .task {
             await viewModel.loadVideos()
         }
-        .onChange(of: authViewModel.isAuthenticated) { _ in
-            Task {
-                await viewModel.loadVideos()
+        .onChange(of: authViewModel.isAuthenticated) { _, _ in
+            Task { await viewModel.loadVideos() }
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Edit") {
+                    isEditingProfile = true
+                }
             }
         }
-    }
-
-    private var userInfoSection: some View {
-        VStack(spacing: 8) {
-            if let email = viewModel.authService.currentUser?.email {
-                Text(email)
-                    .font(.headline)
-            }
-
-            Rectangle()
-                .fill(.clear)
-                .frame(height: 60)
-        }
-        .padding()
-    }
-
-    private var videoGrid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 2) {
-            ForEach(viewModel.videos) { video in
-                VideoThumbnailView(video: video)
-                    .aspectRatio(9/16, contentMode: .fill)
-                    .clipped()
-            }
-        }
-        .padding(.horizontal, 2)
-    }
-
-    @ViewBuilder
-    private var overlayView: some View {
-        if viewModel.isLoading {
-            ProgressView()
-        } else if let error = viewModel.error {
-            ContentUnavailableView(
-                "Error Loading Videos",
-                systemImage: "exclamationmark.triangle",
-                description: Text(error.localizedDescription)
-            )
-        } else if viewModel.videos.isEmpty {
-            ContentUnavailableView(
-                "No Videos Yet",
-                systemImage: "video.slash",
-                description: Text("Videos you upload will appear here")
+        .sheet(isPresented: $isEditingProfile) {
+            EditProfileView(
+                profile: viewModel.profile,
+                storage: viewModel.storageManager,
+                database: viewModel.databaseManager
             )
         }
     }
 }
 
-struct VideoThumbnailView: View {
-    let video: Video
-
-    var body: some View {
-        AsyncImage(url: video.thumbnailURL) { phase in
-            switch phase {
-            case .empty:
-                Rectangle()
-                    .fill(Color.gray.opacity(0.2))
-                    .overlay {
-                        ProgressView()
-                    }
-            case .success(let image):
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            case .failure:
-                Rectangle()
-                    .fill(Color.gray.opacity(0.2))
-                    .overlay {
-                        Image(systemName: "video.fill")
-                            .foregroundColor(.gray)
-                    }
-            @unknown default:
-                EmptyView()
-            }
-        }
-    }
-}
-
-// MARK: - Preview Provider
+#if DEBUG
 struct ProfileView_Previews: PreviewProvider {
     static var previews: some View {
-        Group {
-            ProfileView()
-                .previewDisplayName("Default State")
-
-            ProfileView(viewModel: ProfileViewModel(
-                authService: MockAuthService()
-            ))
-            .previewDisplayName("Empty State")
-        }
+        ProfileView()
     }
 }
-
-// MARK: - Mock Services
-struct MockAuthService: AuthServiceProtocol {
-    var currentUser: User?
-}
+#endif

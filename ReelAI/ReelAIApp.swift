@@ -25,6 +25,13 @@ struct ReelAIApp: App {
 
     init() {
         print("ReelAIApp: Initializing")
+        // Configure tab bar appearance
+        let appearance = UITabBarAppearance()
+        appearance.configureWithDefaultBackground()
+        appearance.backgroundColor = .black
+
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
     }
 
     var body: some Scene {
@@ -32,38 +39,50 @@ struct ReelAIApp: App {
             Group {
                 if authViewModel.isAuthenticated {
                     TabView {
-                        VideoFeedView()
-                            .tabItem {
-                                Label("Home", systemImage: "house.fill")
-                            }
+                        NavigationStack {
+                            VideoFeedView()
+                        }
+                        .tabItem {
+                            Label("Home", systemImage: "house.fill")
+                        }
 
-                        PlaceholderView(feature: "Friends")
-                            .tabItem {
-                                Label("Friends", systemImage: "person.2.fill")
-                            }
+                        NavigationStack {
+                            Text("Friends Coming Soon")
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(Color.black)
+                        }
+                        .tabItem {
+                            Label("Friends", systemImage: "person.2.fill")
+                        }
 
-                        VideoUploadView()
-                            .tabItem {
-                                Label("Create", systemImage: "plus.circle.fill")
-                            }
+                        NavigationStack {
+                            VideoUploadView()
+                        }
+                        .tabItem {
+                            Label("Create", systemImage: "plus.circle.fill")
+                        }
 
-                        PlaceholderView(feature: "Messages")
-                            .tabItem {
-                                Label("Messages", systemImage: "message.fill")
-                            }
+                        NavigationStack {
+                            Text("Messages Coming Soon")
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(Color.black)
+                        }
+                        .tabItem {
+                            Label("Messages", systemImage: "message.fill")
+                        }
 
-                        ProfileView()
-                            .tabItem {
-                                Label("Profile", systemImage: "person.circle.fill")
-                            }
+                        NavigationStack {
+                            ProfileView()
+                        }
+                        .tabItem {
+                            Label("Profile", systemImage: "person.circle.fill")
+                        }
                     }
                     .tint(.blue)
-                    .background(Color.black)
-                    .ignoresSafeArea(.all)
-                    .onAppear { print("ReelAIApp: Showing TabView") }
                 } else {
                     AuthView()
-                        .onAppear { print("ReelAIApp: Showing AuthView") }
                 }
             }
             .onAppear {

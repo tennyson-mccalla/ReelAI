@@ -21,11 +21,16 @@ struct AuthView: View {
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .keyboardType(.emailAddress)
                     .textContentType(.emailAddress)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
                     // Make touch target larger
                     .frame(height: 44)
 
                 SecureField("Password", text: $viewModel.password)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .textContentType(.password)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
                     // Make touch target larger
                     .frame(height: 44)
 
@@ -41,9 +46,9 @@ struct AuthView: View {
             VStack(spacing: 12) {
                 Button(action: {
                     if isSignUp {
-                        viewModel.signUp()
+                        Task { await viewModel.signUp() }
                     } else {
-                        viewModel.signIn()
+                        Task { await viewModel.signIn() }
                     }
                 }) {
                     HStack {
@@ -84,7 +89,7 @@ struct AuthView: View {
             TextField("Email", text: $viewModel.email)
             Button("Cancel", role: .cancel) { }
             Button("Reset") {
-                viewModel.resetPassword()
+                Task { await viewModel.resetPassword() }
             }
         } message: {
             Text("Enter your email to receive a password reset link")

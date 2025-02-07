@@ -3,6 +3,11 @@
 # Path to the pre-commit hook script
 HOOK_PATH=".git/hooks/pre-commit"
 
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
 # Create the pre-commit hook script
 cat > $HOOK_PATH << 'EOL'
 #!/bin/bash
@@ -57,9 +62,97 @@ if [ -n "$SWIFT_LINT_OUTPUT" ]; then
     exit 1
 fi
 
-echo "✅ Pre-commit checks passed"
-exit 0
+# Required imports check
+check_required_imports() {
+    local file=$1
+    local missing_imports=()
+
+    # Check ViewModels for required imports
+    if [[ $file == *"ViewModel.swift" ]]; then
+        grep -q "import SwiftUI" "$file" || missing_imports+=("SwiftUI")
+    fi
+
+    # Check Firebase service implementations
+    if [[ $file == *"Firebase"*"Manager.swift" ]]; then
+        if [[ $file == *"StorageManager"* ]]; then
+            grep -q "import FirebaseStorage" "$file" || missing_imports+=("FirebaseStorage")
+        elif [[ $file == *"DatabaseManager"* ]]; then
+            grep -q "import FirebaseDatabase" "$file" || missing_imports+=("FirebaseDatabase")
+        fi
+    fi
+
+    # Check Views for SwiftUI import
+    if [[ $file == *"View.swift" ]]; then
+        grep -q "import SwiftUI" "$file" || missing_imports+=("SwiftUI")
+    fi
+
+    if [ ${#missing_imports[@]} -ne 0 ]; then
+        echo -e "${RED}Error: Missing required imports in $file:${NC}"
+        printf '%s\n' "${missing_imports[@]}"
+        return 1
+    fi
+    return 0
+}
+
+# Check for duplicate Array extensions
+check_duplicate_extensions() {
+    local extension_count=$(grep -r "extension Array.*subscript.*safe" . | wc -l)
+    if [ $extension_count -gt 1 ]; then
+        echo -e "${RED}Error: Multiple Array safe subscript extensions found. Should only be in Utilities/Extensions.swift${NC}"
+        return 1
+    fi
+    return 0
+}
+
+# Service protocol conformance check
+check_service_conformance() {
+    local file=$1
+    if [[ $file == *"StorageManager.swift" ]]; then
+        local required_methods=("uploadProfilePhoto" "uploadVideo" "uploadThumbnail" "getDownloadURL" "deleteFile")
+        for method in "${required_methods[@]}"; do
+            grep -q "func $method" "$file" || {
+                echo -e "${RED}Error: StorageManager missing required method: $method${NC}"
+                return 1
+            }
+        done
+    elif [[ $file == *"DatabaseManager.swift" ]]; then
+        local required_methods=("updateProfile" "fetchProfile" "updateVideo" "deleteVideo" "fetchVideos")
+        for method in "${required_methods[@]}"; do
+            grep -q "func $method" "$file" || {
+                echo -e "${RED}Error: DatabaseManager missing required method: $method${NC}"
+                return 1
+            }
+        done
+    fi
+    return 0
+}
+
+# Main check loop
+exit_code=0
+files=$(git diff --cached --name-only --diff-filter=ACMR "*.swift")
+
+for file in $files; do
+    # Skip if file doesn't exist (e.g., deleted)
+    [ ! -f "$file" ] && continue
+
+    echo "Checking $file..."
+
+    # Run checks
+    check_required_imports "$file" || exit_code=1
+    check_service_conformance "$file" || exit_code=1
+done
+
+# Run global checks
+check_duplicate_extensions || exit_code=1
+
+if [ $exit_code -eq 0 ]; then
+    echo -e "${GREEN}All checks passed!${NC}"
+else
+    echo -e "${RED}Some checks failed. Please fix the issues and try again.${NC}"
+fi
+
+exit $exit_code
 EOL
 
 # Make the hook executable
-chmod +x $HOOK_PATH 
+chmod +x $HOOK_PATH
