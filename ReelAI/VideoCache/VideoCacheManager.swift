@@ -4,50 +4,51 @@ import UIKit
 import os
 
 actor VideoCacheManager {
-    static let shared = VideoCacheManager()
-    
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "VideoCacheManager")
     private let fileManager: FileManager
     private let cacheDirectory: URL
     private let thumbnailCacheDirectory: URL
     private let maxCacheSize: UInt64 = 500 * 1024 * 1024  // 500MB default
     private let maxThumbnailCacheSize: UInt64 = 50 * 1024 * 1024  // 50MB default
-
-    init() throws {
+    
+    static let shared: VideoCacheManager = {
+        do {
+            return try VideoCacheManager()
+        } catch {
+            fatalError("Failed to initialize VideoCacheManager: \(error)")
+        }
+    }()
+    
+    private init() throws {
         self.fileManager = FileManager.default
         
         // Use the app support directory for persistent cache
         guard let appSupportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw VideoCacheError.failedToGetSupportDirectory
         }
-        cacheDirectory = appSupportDir.appendingPathComponent("VideoCache", isDirectory: true)
-        thumbnailCacheDirectory = appSupportDir.appendingPathComponent("ThumbnailCache", isDirectory: true)
-
-        try createDirectory(at: cacheDirectory)
-        try createDirectory(at: thumbnailCacheDirectory)
-
+        
+        self.cacheDirectory = appSupportDir.appendingPathComponent("VideoCache", isDirectory: true)
+        self.thumbnailCacheDirectory = appSupportDir.appendingPathComponent("ThumbnailCache", isDirectory: true)
+        
+        // Create cache directories if they don't exist
+        if !fileManager.fileExists(atPath: cacheDirectory.path) {
+            try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        }
+        
+        if !fileManager.fileExists(atPath: thumbnailCacheDirectory.path) {
+            try fileManager.createDirectory(at: thumbnailCacheDirectory, withIntermediateDirectories: true)
+        }
+        
         // Add a .nomedia file to prevent thumbnails from showing in photo galleries
         let nomediaPath = thumbnailCacheDirectory.appendingPathComponent(".nomedia")
-        if !fileExists(at: nomediaPath) {
-            try saveData(Data(), to: nomediaPath)
+        if !fileManager.fileExists(atPath: nomediaPath.path) {
+            try Data().write(to: nomediaPath)
         }
         
         // Log cache status on initialization
         logger.info("📂 Cache initialized at:")
-        logger.info("   Video cache: \(cacheDirectory.path)")
-        logger.info("   Thumbnail cache: \(thumbnailCacheDirectory.path)")
-        
-        Task {
-            let videoSize = await calculateCacheSize()
-            let thumbnailSize = await calculateThumbnailCacheSize()
-            logger.info("💾 Initial cache sizes:")
-            logger.info("   Video: \(videoSize/1024/1024)MB")
-            logger.info("   Thumbnail: \(thumbnailSize/1024/1024)MB")
-            
-            // Log cached thumbnails
-            let thumbnails = try? await listCachedThumbnails()
-            logger.info("🖼️ Found \(thumbnails?.count ?? 0) cached thumbnails")
-        }
+        logger.info("   Video cache: \(self.cacheDirectory.path)")
+        logger.info("   Thumbnail cache: \(self.thumbnailCacheDirectory.path)")
     }
     
     enum VideoCacheError: Error {
@@ -88,28 +89,21 @@ actor VideoCacheManager {
     func getCachedThumbnail(withIdentifier id: String) async -> UIImage? {
         let cachedFileURL = getThumbnailCacheURL(forIdentifier: id, fileExtension: "jpg")
         
-        let exists = await Task.detached {
-            self.fileExists(at: cachedFileURL)
-        }.value
-        
-        guard exists else {
-            logger.debug("❌ No cached thumbnail found: \(id)")
+        guard fileExists(at: cachedFileURL) else {
+            logger.debug("No cached thumbnail found for id: \(id)")
             return nil
         }
         
         do {
-            let imageData = try await Task.detached {
-                try self.loadData(from: cachedFileURL)
-            }.value
-            
+            let imageData = try loadData(from: cachedFileURL)
             if let image = UIImage(data: imageData) {
-                logger.debug("✅ Loaded cached thumbnail: \(id)")
+                logger.debug("Loaded cached thumbnail for id: \(id)")
                 return image
             }
-            logger.error("⚠️ Failed to create UIImage from cached data: \(id)")
         } catch {
-            logger.error("⚠️ Failed to read cached thumbnail: \(id)")
+            logger.error("Failed to load cached thumbnail: \(error.localizedDescription)")
         }
+        
         return nil
     }
     
@@ -117,11 +111,8 @@ actor VideoCacheManager {
         let cachedFileURL = getThumbnailCacheURL(forIdentifier: id, fileExtension: "jpg")
         
         // Check if already cached
-        let exists = await Task.detached {
-            self.fileExists(at: cachedFileURL)
-        }.value
-        
-        if exists {
+        if fileExists(at: cachedFileURL) {
+            logger.debug("Thumbnail already cached for id: \(id)")
             return cachedFileURL
         }
         
@@ -131,33 +122,42 @@ actor VideoCacheManager {
         }
         
         // Write to cache
-        try await Task.detached {
-            try self.saveData(imageData, to: cachedFileURL)
-        }.value
+        try saveData(imageData, to: cachedFileURL)
+        logger.debug("Cached new thumbnail for id: \(id)")
         
         return cachedFileURL
     }
-
-    private func calculateCacheSize() async -> UInt64 {
-        await Task.detached {
-            let contents = try? self.fileManager.contentsOfDirectory(at: self.cacheDirectory, includingPropertiesForKeys: [.fileSizeKey])
-            return contents?.reduce(0) { sum, url in
-                guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return sum }
-                return sum + UInt64(size)
-            } ?? 0
-        }.value
+    
+    func calculateCacheSize() async -> UInt64 {
+        do {
+            let contents = try fileManager.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: [.fileSizeKey])
+            var totalSize: UInt64 = 0
+            for url in contents {
+                let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
+                totalSize += UInt64(resourceValues.fileSize ?? 0)
+            }
+            return totalSize
+        } catch {
+            logger.error("Failed to calculate cache size: \(error.localizedDescription)")
+            return 0
+        }
     }
-
-    private func calculateThumbnailCacheSize() async -> UInt64 {
-        await Task.detached {
-            let contents = try? self.fileManager.contentsOfDirectory(at: self.thumbnailCacheDirectory, includingPropertiesForKeys: [.fileSizeKey])
-            return contents?.reduce(0) { sum, url in
-                guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return sum }
-                return sum + UInt64(size)
-            } ?? 0
-        }.value
+    
+    func calculateThumbnailCacheSize() async -> UInt64 {
+        do {
+            let contents = try fileManager.contentsOfDirectory(at: thumbnailCacheDirectory, includingPropertiesForKeys: [.fileSizeKey])
+            var totalSize: UInt64 = 0
+            for url in contents {
+                let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
+                totalSize += UInt64(resourceValues.fileSize ?? 0)
+            }
+            return totalSize
+        } catch {
+            logger.error("Failed to calculate thumbnail cache size: \(error.localizedDescription)")
+            return 0
+        }
     }
-
+    
     func cacheVideo(from url: URL, withIdentifier id: String) async throws -> URL {
         let cachedFileURL = getCacheURL(forIdentifier: id, fileExtension: "mp4")
 
@@ -233,7 +233,7 @@ actor VideoCacheManager {
         print("Total size: \(await calculateCacheSize() / 1024 / 1024)MB")
     }
 
-    func clearCache() async {
+    func clearCache() async throws {
         do {
             let contents = try await listCachedFiles()
             for file in contents ?? [] {
@@ -247,7 +247,7 @@ actor VideoCacheManager {
         }
     }
 
-    func clearThumbnailCache() async {
+    func clearThumbnailCache() async throws {
         do {
             let contents = try await listCachedThumbnails()
             for file in contents ?? [] {
@@ -310,5 +310,17 @@ actor VideoCacheManager {
         try await Task.detached {
             try self.fileManager.contentsOfDirectory(at: self.thumbnailCacheDirectory, includingPropertiesForKeys: nil)
         }.value
+    }
+
+    func logCacheStatus() async {
+        let videoSize = await calculateCacheSize()
+        let thumbnailSize = await calculateThumbnailCacheSize()
+        logger.info("💾 Cache sizes:")
+        logger.info("   Video: \(videoSize/1024/1024)MB")
+        logger.info("   Thumbnail: \(thumbnailSize/1024/1024)MB")
+        
+        if let thumbnails = try? await listCachedThumbnails() {
+            logger.info("🖼️ Found \(thumbnails.count) cached thumbnails")
+        }
     }
 }
