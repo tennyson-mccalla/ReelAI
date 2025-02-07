@@ -5,7 +5,7 @@ import UIKit
 actor VideoCacheManager {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "VideoCacheManager")
     private let fileManager: FileManager
-    private let cacheDirectory: URL
+    private let videoCacheDirectory: URL
     private let thumbnailCacheDirectory: URL
     private let maxCacheSize: UInt64 = 500 * 1024 * 1024  // 500MB default
     private let maxThumbnailCacheSize: UInt64 = 50 * 1024 * 1024  // 50MB default
@@ -26,12 +26,12 @@ actor VideoCacheManager {
             throw VideoCacheError.failedToGetSupportDirectory
         }
 
-        self.cacheDirectory = appSupportDir.appendingPathComponent("VideoCache", isDirectory: true)
+        self.videoCacheDirectory = appSupportDir.appendingPathComponent("VideoCache", isDirectory: true)
         self.thumbnailCacheDirectory = appSupportDir.appendingPathComponent("ThumbnailCache", isDirectory: true)
 
         // Create cache directories if they don't exist
-        if !fileManager.fileExists(atPath: cacheDirectory.path) {
-            try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        if !fileManager.fileExists(atPath: videoCacheDirectory.path) {
+            try fileManager.createDirectory(at: videoCacheDirectory, withIntermediateDirectories: true)
         }
 
         if !fileManager.fileExists(atPath: thumbnailCacheDirectory.path) {
@@ -46,7 +46,7 @@ actor VideoCacheManager {
 
         // Log cache status on initialization
         logger.info("📂 Cache initialized at:")
-        logger.info("   Video cache: \(self.cacheDirectory.path)")
+        logger.info("   Video cache: \(self.videoCacheDirectory.path)")
         logger.info("   Thumbnail cache: \(self.thumbnailCacheDirectory.path)")
     }
 
@@ -64,7 +64,7 @@ actor VideoCacheManager {
     // MARK: - Helper Methods
 
     private func getCacheURL(forIdentifier identifier: String, fileExtension: String) -> URL {
-        return cacheDirectory.appendingPathComponent("\(identifier).\(fileExtension)")
+        return videoCacheDirectory.appendingPathComponent("\(identifier).\(fileExtension)")
     }
 
     private func getThumbnailCacheURL(forIdentifier identifier: String, fileExtension: String) -> URL {
@@ -166,7 +166,7 @@ actor VideoCacheManager {
     }
 
     func clearCache() async throws {
-        let contents = try fileManager.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil)
+        let contents = try fileManager.contentsOfDirectory(at: videoCacheDirectory, includingPropertiesForKeys: nil)
         for url in contents {
             try removeFile(at: url)
         }
@@ -194,7 +194,7 @@ actor VideoCacheManager {
     }
 
     func calculateCacheSize() async throws -> UInt64 {
-        let contents = try fileManager.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: [.fileSizeKey])
+        let contents = try fileManager.contentsOfDirectory(at: videoCacheDirectory, includingPropertiesForKeys: [.fileSizeKey])
         return try contents.reduce(0) { total, url in
             let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
             return total + UInt64(resourceValues.fileSize ?? 0)
@@ -228,7 +228,7 @@ actor VideoCacheManager {
                     📂 Cache Status:
                     Cache directories:
                       Thumbnails: \(self.thumbnailCacheDirectory.path)
-                      Videos: \(self.cacheDirectory.path)
+                      Videos: \(self.videoCacheDirectory.path)
                     Contents:
                       Thumbnails: \(thumbnailFiles.count) files (\(ByteCountFormatter.string(fromByteCount: Int64(thumbnailSize), countStyle: .file)))
                       Videos: \(videoFiles.count) files (\(ByteCountFormatter.string(fromByteCount: Int64(videoSize), countStyle: .file)))
