@@ -50,7 +50,7 @@ struct VideoThumbnailView: View {
         }
         .task {
             // Try to load from cache first
-            cachedImage = VideoCacheManager.shared.getCachedThumbnail(withIdentifier: video.id)
+            cachedImage = await VideoCacheManager.shared.getCachedThumbnail(withIdentifier: video.id)
         }
     }
 }

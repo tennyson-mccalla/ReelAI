@@ -139,7 +139,7 @@ actor VideoCacheManager {
         return cachedFileURL
     }
     
-    func getCachedThumbnail(withIdentifier id: String) -> UIImage? {
+    func getCachedThumbnail(withIdentifier id: String) async -> UIImage? {
         let cachedFileURL = thumbnailCacheDirectory.appendingPathComponent("\(id).jpg")
         guard fileManager.fileExists(atPath: cachedFileURL.path),
               let imageData = try? Data(contentsOf: cachedFileURL) else {
