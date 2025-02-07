@@ -90,20 +90,54 @@ class ProfileViewModel: ObservableObject {
         error = nil
 
         do {
+            print("🎬 Starting to load videos")
             let snapshot = try await db.child("videos")
                 .queryOrdered(byChild: "timestamp")
                 .queryLimited(toLast: 50)
                 .getData()
 
-            print("📄 Got \(snapshot.childrenCount) videos")
+            print("📄 Got \(snapshot.childrenCount) videos from database")
             let loadedVideos = try await loadVideosFromSnapshot(snapshot, userId: userId)
-            videos = loadedVideos.sorted { $0.createdAt > $1.createdAt }
+            
+            // Set videos immediately after loading basic info
+            await MainActor.run {
+                videos = loadedVideos.sorted { $0.createdAt > $1.createdAt }
+                isLoading = false // Stop showing loading spinner after basic data is loaded
+            }
+
+            // Start preloading thumbnails after basic data is shown
+            print("🖼️ Starting thumbnail preload")
+            await preloadThumbnails(for: loadedVideos)
+            print("✅ Finished preloading thumbnails")
+
         } catch {
             print("❌ Error loading videos: \(error)")
             self.error = error
+            isLoading = false
         }
+    }
 
-        isLoading = false
+    private func preloadThumbnails(for videos: [Video]) async {
+        await withTaskGroup(of: Void.self) { group in
+            for video in videos {
+                group.addTask {
+                    if let thumbnailURL = video.thumbnailURL {
+                        do {
+                            let (data, _) = try await URLSession.shared.data(from: thumbnailURL)
+                            if let image = UIImage(data: data) {
+                                do {
+                                    _ = try await VideoCacheManager.shared.cacheThumbnail(image, withIdentifier: video.id)
+                                } catch {
+                                    print("Failed to cache thumbnail for video \(video.id): \(error)")
+                                }
+                            }
+                        } catch {
+                            print("Failed to preload thumbnail for video \(video.id): \(error)")
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private func loadVideosFromSnapshot(_ snapshot: DataSnapshot, userId: String) async throws -> [Video] {
