@@ -23,19 +23,54 @@ struct ProfileView: View {
     
     var body: some View {
         NavigationView {
-            ScrollView {
-                gridContent
-                if viewModel.isLoading && !viewModel.videos.isEmpty {
-                    Text("Loading more videos...")
-                        .foregroundColor(.secondary)
-                        .padding()
+            ZStack {
+                ScrollView {
+                    gridContent
+                    if viewModel.isLoading && !viewModel.videos.isEmpty {
+                        Text("Loading more videos...")
+                            .foregroundColor(.secondary)
+                            .padding()
+                    }
+                    
+                    if let error = viewModel.error {
+                        Text("Error: \(error.localizedDescription)")
+                            .foregroundColor(.red)
+                            .padding()
+                    }
                 }
                 
-                if let error = viewModel.error {
-                    Text("Error: \(error.localizedDescription)")
-                        .foregroundColor(.red)
-                        .padding()
+                #if DEBUG
+                VStack {
+                    Spacer()
+                    HStack {
+                        Button(action: {
+                            Task {
+                                await VideoCacheManager.shared.logCacheStatus()
+                            }
+                        }) {
+                            Label("Cache Status", systemImage: "info.circle")
+                                .padding(8)
+                                .background(Color.black.opacity(0.7))
+                                .foregroundColor(.white)
+                                .cornerRadius(8)
+                        }
+                        
+                        Button(action: {
+                            Task {
+                                try? await VideoCacheManager.shared.clearCache()
+                                await VideoCacheManager.shared.logCacheStatus()
+                            }
+                        }) {
+                            Label("Clear Cache", systemImage: "trash")
+                                .padding(8)
+                                .background(Color.black.opacity(0.7))
+                                .foregroundColor(.white)
+                                .cornerRadius(8)
+                        }
+                    }
+                    .padding()
                 }
+                #endif
             }
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
