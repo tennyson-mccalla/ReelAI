@@ -3,22 +3,57 @@ import os
 
 struct VideoThumbnailView: View {
     let video: Video
-    @State private var isLoading = true
     @State private var thumbnailImage: UIImage?
+    @State private var isLoading = true
+    @State private var loadAttempt = 0
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "VideoThumbnailView")
     
     var body: some View {
-        Group {
+        ZStack {
             if let image = thumbnailImage {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .transition(.opacity)
             } else {
-                Color.gray.opacity(0.3)
+                Rectangle()
+                    .fill(Color.gray.opacity(0.3))
+            }
+            
+            if isLoading {
+                ProgressView()
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: thumbnailImage != nil)
+        .task(id: loadAttempt) {
+            isLoading = true
+            if let cached = await VideoCacheManager.shared.getCachedThumbnail(withIdentifier: video.id) {
+                thumbnailImage = cached
+                isLoading = false
+            } else if let thumbnailURL = video.thumbnailURL {
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: thumbnailURL)
+                    guard let image = UIImage(data: data) else {
+                        logger.error("❌ Failed to create image from data")
+                        isLoading = false
+                        return
+                    }
+                    
+                    // Cache the thumbnail
+                    _ = try await VideoCacheManager.shared.cacheThumbnail(image, withIdentifier: video.id)
+                    logger.debug("✅ Loaded and cached thumbnail")
+                    
+                    thumbnailImage = image
+                    isLoading = false
+                } catch {
+                    logger.error("❌ Failed to load thumbnail: \(error.localizedDescription)")
+                    isLoading = false
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .videoCacheCleared)) { _ in
+            thumbnailImage = nil
+            isLoading = true
+            loadAttempt += 1
+        }
         .onAppear {
             Task {
                 await loadThumbnail()

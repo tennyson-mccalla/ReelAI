@@ -2,6 +2,10 @@ import Foundation
 import os
 import UIKit
 
+extension Notification.Name {
+    static let videoCacheCleared = Notification.Name("videoCacheCleared")
+}
+
 actor VideoCacheManager {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "VideoCacheManager")
     private let fileManager: FileManager
@@ -15,7 +19,7 @@ actor VideoCacheManager {
             let manager = try VideoCacheManager()
             // Log initial cache status
             Task {
-                manager.logCacheStatus()
+                await manager.logInitialStatus()
             }
             return manager
         } catch {
@@ -53,6 +57,13 @@ actor VideoCacheManager {
         logger.info("📂 Cache initialized at:")
         logger.info("   Video cache: \(self.videoCacheDirectory.path)")
         logger.info("   Thumbnail cache: \(self.thumbnailCacheDirectory.path)")
+    }
+
+    private func logInitialStatus() async {
+        let message = "📱 VideoCacheManager initialized"
+        logger.info("\(message)")
+        print(message)
+        logCacheStatus()
     }
 
     enum VideoCacheError: Error {
@@ -174,6 +185,11 @@ actor VideoCacheManager {
         // Clear both caches
         try await clearVideoCache()
         try await clearThumbnailCache()
+        
+        // Post notification that cache was cleared
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .videoCacheCleared, object: nil)
+        }
         
         // Log status after clearing
         let message = "Cache cleared successfully"
