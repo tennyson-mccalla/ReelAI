@@ -11,6 +11,8 @@ class ProfileViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var profile: UserProfile
     private var hasLoadedVideos = false
+    private var cachedVideos: [Video]?
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfileViewModel")
 
     let authService: AuthServiceProtocol
     private let db = Database.database().reference()
@@ -42,9 +44,25 @@ class ProfileViewModel: ObservableObject {
             self.profile = UserProfile.mock // Temporary fallback
         }
 
+        // Set up notification observer for cache clearing
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCacheCleared),
+            name: .videoCacheCleared,
+            object: nil
+        )
+
         // Load the real profile
         Task {
             await loadProfile()
+        }
+    }
+
+    @objc private func handleCacheCleared() {
+        Task {
+            // Force reload videos from Firebase when cache is cleared
+            cachedVideos = nil
+            await loadVideos()
         }
     }
 
@@ -85,17 +103,20 @@ class ProfileViewModel: ObservableObject {
     }
 
     func loadVideos() async {
+        guard !isLoading else { return }
         guard let userId = authService.currentUser?.uid else { return }
-        
-        // If we already have videos and this is just a view refresh, don't show loading state
-        let showLoading = !hasLoadedVideos
-        if showLoading {
-            isLoading = true
-        }
-        error = nil
+
+        isLoading = true
+        logger.info("🎬 Starting to load videos")
 
         do {
-            print("🎬 Starting to load videos")
+            if let cached = cachedVideos {
+                videos = cached
+                logger.debug("📼 Using cached videos")
+                isLoading = false
+                return
+            }
+
             let snapshot = try await db.child("videos")
                 .queryOrdered(byChild: "timestamp")
                 .queryLimited(toLast: 50)
@@ -104,16 +125,19 @@ class ProfileViewModel: ObservableObject {
             print("📄 Got \(snapshot.childrenCount) videos from database")
             let loadedVideos = try await loadVideosFromSnapshot(snapshot, userId: userId)
             
-            // Set videos immediately after loading basic info
             await MainActor.run {
-                videos = loadedVideos.sorted { $0.createdAt > $1.createdAt }
+                self.videos = loadedVideos.sorted { $0.createdAt > $1.createdAt }
+                self.cachedVideos = loadedVideos.sorted { $0.createdAt > $1.createdAt }
+                logger.info("📄 Got \(loadedVideos.count) videos from database")
                 isLoading = false
                 hasLoadedVideos = true
             }
         } catch {
-            print("❌ Error loading videos: \(error)")
-            self.error = error
-            isLoading = false
+            await MainActor.run {
+                self.error = error
+                logger.error("❌ Failed to load videos: \(error.localizedDescription)")
+                isLoading = false
+            }
         }
     }
 

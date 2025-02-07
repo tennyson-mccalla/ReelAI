@@ -250,44 +250,33 @@ actor VideoCacheManager {
     }
 
     func logCacheStatus() {
-        Task { [self] in
-            do {
-                let thumbnailFiles = try fileManager.contentsOfDirectory(at: thumbnailCacheDirectory, includingPropertiesForKeys: [.fileSizeKey])
-                    .filter { $0.lastPathComponent != ".nomedia" }
-                let videoFiles = try fileManager.contentsOfDirectory(at: videoCacheDirectory, includingPropertiesForKeys: [.fileSizeKey])
-                
-                let thumbnailSize = thumbnailFiles.reduce(0) { total, url in
-                    guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return total }
-                    return total + size
-                }
-                let videoSize = videoFiles.reduce(0) { total, url in
-                    guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return total }
-                    return total + size
-                }
-
-                let status = """
-                    📂 Cache Status:
-                    Cache directories:
-                      Thumbnails: \(self.thumbnailCacheDirectory.path)
-                      Videos: \(self.videoCacheDirectory.path)
-                    Contents:
-                      Thumbnails: \(thumbnailFiles.count) files (\(ByteCountFormatter.string(fromByteCount: Int64(thumbnailSize), countStyle: .file)))
-                      Videos: \(videoFiles.count) files (\(ByteCountFormatter.string(fromByteCount: Int64(videoSize), countStyle: .file)))
-                    Files:
-                      Thumbnails: \(thumbnailFiles.map { $0.lastPathComponent }.sorted().joined(separator: ", "))
-                      Videos: \(videoFiles.map { $0.lastPathComponent }.sorted().joined(separator: ", "))
-                    """
-                
-                // Always print to console for visibility during development
-                print(status)
-                
-                // Use os_log for system logging
-                logger.info("\(status)")
-            } catch {
-                let errorMsg = "Failed to get cache status: \(error.localizedDescription)"
-                print(errorMsg)
-                logger.error("\(errorMsg)")
-            }
+        Task {
+            let videoCount = try? await countFiles(in: videoCacheDirectory)
+            let thumbnailCount = try? await countFiles(in: thumbnailCacheDirectory)
+            let videoSize = try? await calculateSize(of: videoCacheDirectory)
+            let thumbnailSize = try? await calculateSize(of: thumbnailCacheDirectory)
+            
+            let message = """
+            📊 Cache Status:
+            Videos: \(videoCount ?? 0) files (\(ByteCountFormatter.string(fromByteCount: Int64(videoSize ?? 0), countStyle: .file)))
+            Thumbnails: \(thumbnailCount ?? 0) files (\(ByteCountFormatter.string(fromByteCount: Int64(thumbnailSize ?? 0), countStyle: .file)))
+            """
+            
+            // Only log once
+            logger.info("\(message)")
+        }
+    }
+    
+    private func countFiles(in directory: URL) async throws -> Int {
+        let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        return contents.count
+    }
+    
+    private func calculateSize(of directory: URL) async throws -> UInt64 {
+        let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])
+        return try contents.reduce(0) { total, url in
+            let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
+            return total + UInt64(resourceValues.fileSize ?? 0)
         }
     }
 }
