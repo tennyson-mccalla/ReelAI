@@ -169,7 +169,7 @@ actor VideoCacheManager {
         // Clear both caches
         try await clearVideoCache()
         try await clearThumbnailCache()
-        await logCacheStatus()
+        logCacheStatus()
     }
 
     private func clearVideoCache() async throws {
@@ -245,11 +245,11 @@ actor VideoCacheManager {
                       Videos: \(videoFiles.map { $0.lastPathComponent }.sorted().joined(separator: ", "))
                     """
                 
-                logger.info(status)
+                logger.info("\(status)")
                 print(status) // Also print to console for debugging
             } catch {
                 let errorMsg = "Failed to get cache status: \(error.localizedDescription)"
-                logger.error(errorMsg)
+                logger.error("\(errorMsg)")
                 print(errorMsg) // Also print to console for debugging
             }
         }
