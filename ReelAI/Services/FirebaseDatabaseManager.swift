@@ -45,10 +45,44 @@ final class FirebaseDatabaseManager: DatabaseManager {
         try await db.child("videos").child(id).removeValue()
     }
 
+    func softDeleteVideo(_ videoId: String) async throws {
+        let updates: [String: Any] = [
+            "isDeleted": true,
+            "lastEditedAt": ServerValue.timestamp()
+        ]
+        try await db.child("videos").child(videoId).updateChildValues(updates)
+    }
+
+    func restoreVideo(_ videoId: String) async throws {
+        let updates: [String: Any] = [
+            "isDeleted": false,
+            "lastEditedAt": ServerValue.timestamp()
+        ]
+        try await db.child("videos").child(videoId).updateChildValues(updates)
+    }
+
+    func updateVideoPrivacy(_ videoId: String, privacyLevel: Video.PrivacyLevel) async throws {
+        let updates: [String: Any] = [
+            "privacyLevel": privacyLevel.rawValue,
+            "lastEditedAt": ServerValue.timestamp()
+        ]
+        try await db.child("videos").child(videoId).updateChildValues(updates)
+    }
+
+    func updateVideoMetadata(_ videoId: String, caption: String) async throws {
+        let updates: [String: Any] = [
+            "caption": caption.trimmingCharacters(in: .whitespacesAndNewlines),
+            "lastEditedAt": ServerValue.timestamp()
+        ]
+        try await db.child("videos").child(videoId).updateChildValues(updates)
+    }
+
     func fetchVideos(limit: Int, after key: String?) async throws -> [Video] {
         var query = db.child("videos")
             .queryOrdered(byChild: "timestamp")
             .queryLimited(toFirst: UInt(limit))
+            // Only fetch non-deleted videos
+            .queryEqual(toValue: false, childKey: "isDeleted")
 
         if let key = key {
             query = query.queryStarting(afterValue: nil, childKey: key)

@@ -6,6 +6,7 @@ import FirebaseDatabase
 
 struct ProfileView: View {
     @StateObject private var viewModel: ProfileViewModel
+<<<<<<< HEAD
     @EnvironmentObject private var authViewModel: AuthViewModel
     private let columns = [
         GridItem(.flexible()),
@@ -13,6 +14,12 @@ struct ProfileView: View {
         GridItem(.flexible())
     ]
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfileView")
+=======
+    @Environment(\.refresh) private var refresh
+    @EnvironmentObject var authViewModel: AuthViewModel
+    @State private var isEditingProfile = false
+    @State private var selectedVideoForEdit: Video?
+>>>>>>> be20c0f (Add video management functionality)
 
     init(viewModel: ProfileViewModel? = nil) {
         let wrappedValue = viewModel ?? ProfileViewModel(
@@ -39,10 +46,55 @@ struct ProfileView: View {
                     }
                 }
 
+<<<<<<< HEAD
                 VStack {
                     Spacer()
                     CacheDebugButtons(viewModel: viewModel)
                         .padding()
+=======
+                // Sign Out Button
+                Button("Sign Out") {
+                    authViewModel.signOut()
+                }
+                .foregroundColor(.red)
+                .padding()
+
+                // Video Grid
+                if !viewModel.videos.isEmpty {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 2) {
+                        ForEach(viewModel.videos) { video in
+                            VideoThumbnailView(video: video)
+                                .aspectRatio(9/16, contentMode: .fill)
+                                .clipped()
+                                .contextMenu {
+                                    Button {
+                                        selectedVideoForEdit = video
+                                    } label: {
+                                        Label("Edit", systemImage: "pencil")
+                                    }
+
+                                    if video.isDeleted {
+                                        Button {
+                                            Task {
+                                                await viewModel.restore(video)
+                                            }
+                                        } label: {
+                                            Label("Restore", systemImage: "arrow.counterclockwise")
+                                        }
+                                    } else {
+                                        Button(role: .destructive) {
+                                            Task {
+                                                await viewModel.softDelete(video)
+                                            }
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
+                                }
+                        }
+                    }
+                    .padding(.horizontal, 2)
+>>>>>>> be20c0f (Add video management functionality)
                 }
             }
             .navigationTitle("Profile")
@@ -198,6 +250,9 @@ private extension ProfileView {
                 }
             }
             .navigationTitle("Video Details")
+        }
+        .navigationDestination(item: $selectedVideoForEdit) { video in
+            VideoManagementView(video: video)
         }
     }
 }

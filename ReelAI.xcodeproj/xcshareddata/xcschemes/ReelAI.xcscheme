@@ -74,10 +74,21 @@
             ReferencedContainer = "container:ReelAI.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <CommandLineArguments>
+         <CommandLineArgument
+            argument = ""
+            isEnabled = "YES">
+         </CommandLineArgument>
+      </CommandLineArguments>
       <EnvironmentVariables>
          <EnvironmentVariable
             key = "CODE_SIGN_LOG_LEVEL"
             value = "3"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "FLEX_INSTANCE_NAME"
+            value = "VideoManagement"
             isEnabled = "YES">
          </EnvironmentVariable>
       </EnvironmentVariables>

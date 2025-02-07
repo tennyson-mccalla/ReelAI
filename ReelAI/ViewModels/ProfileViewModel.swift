@@ -261,4 +261,27 @@ class ProfileViewModel: ObservableObject {
 
         return videos.sorted(by: { $0.createdAt > $1.createdAt })
     }
+
+    func softDelete(_ video: Video) async {
+        isLoading = true
+        do {
+            try await databaseManager.softDeleteVideo(video.id)
+            await loadVideos() // Refresh the list
+        } catch {
+            self.error = error
+        }
+        isLoading = false
+    }
+    
+    func restore(_ video: Video) async {
+        isLoading = true
+        do {
+            try await databaseManager.restoreVideo(video.id)
+            await loadVideos() // Refresh the list
+        } catch {
+            self.error = error
+        }
+        isLoading = false
+    }
 }
+
