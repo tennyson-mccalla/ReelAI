@@ -110,12 +110,6 @@ class ProfileViewModel: ObservableObject {
                 isLoading = false
                 hasLoadedVideos = true
             }
-
-            // Start preloading thumbnails after basic data is shown
-            print("🖼️ Starting thumbnail preload")
-            await preloadThumbnails(for: loadedVideos)
-            print("✅ Finished preloading thumbnails")
-
         } catch {
             print("❌ Error loading videos: \(error)")
             self.error = error
@@ -126,29 +120,6 @@ class ProfileViewModel: ObservableObject {
     func forceRefreshVideos() async {
         hasLoadedVideos = false
         await loadVideos()
-    }
-
-    private func preloadThumbnails(for videos: [Video]) async {
-        await withTaskGroup(of: Void.self) { group in
-            for video in videos {
-                group.addTask {
-                    if let thumbnailURL = video.thumbnailURL {
-                        do {
-                            let (data, _) = try await URLSession.shared.data(from: thumbnailURL)
-                            if let image = UIImage(data: data) {
-                                do {
-                                    _ = try await VideoCacheManager.shared.cacheThumbnail(image, withIdentifier: video.id)
-                                } catch {
-                                    print("Failed to cache thumbnail for video \(video.id): \(error)")
-                                }
-                            }
-                        } catch {
-                            print("Failed to preload thumbnail for video \(video.id): \(error)")
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private func loadVideosFromSnapshot(_ snapshot: DataSnapshot, userId: String) async throws -> [Video] {
@@ -172,24 +143,6 @@ class ProfileViewModel: ObservableObject {
                     for: videoName,
                     timestamp: videoMetadata.timeCreated?.timeIntervalSince1970 ?? timestamp
                 )
-
-                // If we have a thumbnail URL, try to preload it into our cache
-                if let thumbnailURL = thumbnailURL {
-                    Task {
-                        do {
-                            let (data, _) = try await URLSession.shared.data(from: thumbnailURL)
-                            if let image = UIImage(data: data) {
-                                do {
-                                    _ = try await VideoCacheManager.shared.cacheThumbnail(image, withIdentifier: snapshot.key)
-                                } catch {
-                                    print("Failed to cache thumbnail for video \(snapshot.key): \(error)")
-                                }
-                            }
-                        } catch {
-                            print("Failed to preload thumbnail for video \(snapshot.key): \(error)")
-                        }
-                    }
-                }
 
                 let video = Video(
                     id: snapshot.key,
