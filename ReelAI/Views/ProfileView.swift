@@ -81,13 +81,18 @@ struct ProfileView: View {
             }
         }
         .refreshable {
-            await viewModel.loadVideos()
+            // Force refresh when user explicitly pulls to refresh
+            await viewModel.forceRefreshVideos()
         }
         .task {
+            // Initial load only
             await viewModel.loadVideos()
         }
         .onChange(of: authViewModel.isAuthenticated) { _, _ in
-            Task { await viewModel.loadVideos() }
+            // Reload when auth state changes
+            Task { 
+                await viewModel.forceRefreshVideos()
+            }
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {

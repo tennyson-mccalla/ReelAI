@@ -10,6 +10,7 @@ class ProfileViewModel: ObservableObject {
     @Published private(set) var error: Error?
     @Published private(set) var isLoading = false
     @Published private(set) var profile: UserProfile
+    private var hasLoadedVideos = false
 
     let authService: AuthServiceProtocol
     private let db = Database.database().reference()
@@ -85,8 +86,12 @@ class ProfileViewModel: ObservableObject {
 
     func loadVideos() async {
         guard let userId = authService.currentUser?.uid else { return }
-
-        isLoading = true
+        
+        // If we already have videos and this is just a view refresh, don't show loading state
+        let showLoading = !hasLoadedVideos
+        if showLoading {
+            isLoading = true
+        }
         error = nil
 
         do {
@@ -102,7 +107,8 @@ class ProfileViewModel: ObservableObject {
             // Set videos immediately after loading basic info
             await MainActor.run {
                 videos = loadedVideos.sorted { $0.createdAt > $1.createdAt }
-                isLoading = false // Stop showing loading spinner after basic data is loaded
+                isLoading = false
+                hasLoadedVideos = true
             }
 
             // Start preloading thumbnails after basic data is shown
@@ -115,6 +121,11 @@ class ProfileViewModel: ObservableObject {
             self.error = error
             isLoading = false
         }
+    }
+
+    func forceRefreshVideos() async {
+        hasLoadedVideos = false
+        await loadVideos()
     }
 
     private func preloadThumbnails(for videos: [Video]) async {
