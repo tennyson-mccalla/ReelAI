@@ -14,9 +14,10 @@ actor VideoCacheManager {
     private let maxThumbnailCacheSize: UInt64 = 50 * 1024 * 1024  // 50MB default
 
     private init() {
-        let cachePath = NSSearchPathForDirectoriesInDomains(.cachesDirectory, .userDomainMask, true)[0]
-        cacheDirectory = URL(fileURLWithPath: cachePath).appendingPathComponent("VideoCache")
-        thumbnailCacheDirectory = URL(fileURLWithPath: cachePath).appendingPathComponent("ThumbnailCache")
+        // Use the app support directory for persistent cache
+        let appSupportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        cacheDirectory = appSupportDir.appendingPathComponent("VideoCache", isDirectory: true)
+        thumbnailCacheDirectory = appSupportDir.appendingPathComponent("ThumbnailCache", isDirectory: true)
 
         do {
             // Create cache directories if they don't exist
@@ -34,16 +35,23 @@ actor VideoCacheManager {
             }
             
             // Log cache status on initialization
-            logger.info("Cache initialized - Video cache: \(self.cacheDirectory.path)")
-            logger.info("Cache initialized - Thumbnail cache: \(self.thumbnailCacheDirectory.path)")
+            logger.info("📂 Cache initialized at:")
+            logger.info("   Video cache: \(self.cacheDirectory.path)")
+            logger.info("   Thumbnail cache: \(self.thumbnailCacheDirectory.path)")
             
             Task {
                 let videoSize = await calculateCacheSize()
                 let thumbnailSize = await calculateThumbnailCacheSize()
-                logger.info("Initial cache sizes - Video: \(videoSize/1024/1024)MB, Thumbnail: \(thumbnailSize/1024/1024)MB")
+                logger.info("💾 Initial cache sizes:")
+                logger.info("   Video: \(videoSize/1024/1024)MB")
+                logger.info("   Thumbnail: \(thumbnailSize/1024/1024)MB")
+                
+                // Log cached thumbnails
+                let thumbnails = try? fileManager.contentsOfDirectory(at: thumbnailCacheDirectory, includingPropertiesForKeys: nil)
+                logger.info("🖼️ Found \(thumbnails?.count ?? 0) cached thumbnails")
             }
         } catch {
-            logger.error("Failed to initialize cache directories: \(error.localizedDescription)")
+            logger.error("❌ Failed to initialize cache directories: \(error.localizedDescription)")
         }
     }
 
@@ -176,20 +184,21 @@ actor VideoCacheManager {
     
     func getCachedThumbnail(withIdentifier id: String) async -> UIImage? {
         let cachedFileURL = thumbnailCacheDirectory.appendingPathComponent("\(id).jpg")
+        
         if fileManager.fileExists(atPath: cachedFileURL.path) {
-            logger.debug("🎯 Cache hit for thumbnail id: \(id)")
             do {
                 let imageData = try Data(contentsOf: cachedFileURL)
                 if let image = UIImage(data: imageData) {
+                    logger.debug("✅ Loaded cached thumbnail: \(id)")
                     return image
                 }
-                logger.error("⚠️ Failed to create UIImage from cached data for id: \(id)")
+                logger.error("⚠️ Failed to create UIImage from cached data: \(id)")
             } catch {
-                logger.error("⚠️ Failed to read cached thumbnail for id: \(id): \(error.localizedDescription)")
+                logger.error("⚠️ Failed to read cached thumbnail: \(id)")
             }
-            return nil
+        } else {
+            logger.debug("❌ No cached thumbnail found: \(id)")
         }
-        logger.debug("❌ Cache miss for thumbnail id: \(id)")
         return nil
     }
     

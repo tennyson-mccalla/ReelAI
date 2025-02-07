@@ -16,17 +16,10 @@ struct VideoThumbnailView: View {
                     .transition(.opacity)
             } else {
                 Color.gray.opacity(0.3)
-                    .overlay {
-                        if isLoading {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                        }
-                    }
             }
         }
         .animation(.easeInOut(duration: 0.2), value: thumbnailImage != nil)
         .onAppear {
-            // Start loading immediately when view appears
             Task {
                 await loadThumbnail()
             }
@@ -36,11 +29,11 @@ struct VideoThumbnailView: View {
     private func loadThumbnail() async {
         guard thumbnailImage == nil else { return }
         let start = Date()
-        logger.debug("🖼️ Starting to load thumbnail for video: \(video.id)")
+        logger.debug("🖼️ Loading thumbnail for video: \(video.id)")
         
         // First try to get from cache
         if let cached = await VideoCacheManager.shared.getCachedThumbnail(withIdentifier: video.id) {
-            logger.debug("✅ Loaded cached thumbnail for video: \(video.id) in \(Date().timeIntervalSince(start))s")
+            logger.debug("✅ Loaded cached thumbnail in \(Date().timeIntervalSince(start))s")
             await MainActor.run {
                 withAnimation {
                     thumbnailImage = cached
@@ -62,7 +55,7 @@ struct VideoThumbnailView: View {
         do {
             let (data, _) = try await URLSession.shared.data(from: thumbnailURL)
             guard let image = UIImage(data: data) else {
-                logger.error("❌ Failed to create image from data for video: \(video.id)")
+                logger.error("❌ Failed to create image from data")
                 await MainActor.run {
                     isLoading = false
                 }
@@ -71,7 +64,7 @@ struct VideoThumbnailView: View {
             
             // Cache the thumbnail
             _ = try await VideoCacheManager.shared.cacheThumbnail(image, withIdentifier: video.id)
-            logger.debug("✅ Loaded and cached thumbnail for video: \(video.id) in \(Date().timeIntervalSince(start))s")
+            logger.debug("✅ Loaded and cached thumbnail in \(Date().timeIntervalSince(start))s")
             
             await MainActor.run {
                 withAnimation {
@@ -80,7 +73,7 @@ struct VideoThumbnailView: View {
                 }
             }
         } catch {
-            logger.error("❌ Failed to load thumbnail for video \(video.id): \(error.localizedDescription)")
+            logger.error("❌ Failed to load thumbnail: \(error.localizedDescription)")
             await MainActor.run {
                 isLoading = false
             }

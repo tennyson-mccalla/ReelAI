@@ -1,93 +1,41 @@
 import SwiftUI
-import FirebaseAuth
 import os
 
 struct ProfileView: View {
     @StateObject private var viewModel: ProfileViewModel
-    @Environment(\.refresh) private var refresh
-    @EnvironmentObject var authViewModel: AuthViewModel
-    @State private var isEditingProfile = false
+    @EnvironmentObject private var authViewModel: AuthViewModel
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 1), count: 3)
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfileView")
     
-    init(viewModel: ProfileViewModel? = nil) {
-        let wrappedValue = viewModel ?? ProfileViewModel(
-            authService: FirebaseAuthService()
-        )
-        _viewModel = StateObject(wrappedValue: wrappedValue)
+    init(viewModel: ProfileViewModel = ProfileViewModel()) {
+        _viewModel = StateObject(wrappedValue: viewModel)
     }
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                // Profile Header
-                VStack(spacing: 12) {
-                    // Profile Photo
-                    AsyncImage(url: viewModel.profile.photoURL) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        Image(systemName: "person.circle.fill")
-                            .resizable()
-                            .foregroundColor(.gray)
-                    }
-                    .frame(width: 100, height: 100)
-                    .clipShape(Circle())
-
-                    // Display Name
-                    Text(viewModel.profile.displayName)
-                        .font(.title2)
-                        .bold()
-
-                    // Bio if available
-                    if !viewModel.profile.bio.isEmpty {
-                        Text(viewModel.profile.bio)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
-
-                    // Email
-                    if let email = viewModel.authService.currentUser?.email {
-                        Text(email)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.top)
-
-                // Sign Out Button
-                Button("Sign Out") {
-                    authViewModel.signOut()
-                }
-                .foregroundColor(.red)
-                .padding()
-
-                // Video Grid
+        NavigationView {
+            ScrollView {
                 LazyVGrid(columns: columns, spacing: 1) {
-                    if !viewModel.videos.isEmpty {
-                        ForEach(viewModel.videos) { video in
-                            VideoThumbnailView(video: video)
-                                .aspectRatio(9/16, contentMode: .fill)
-                                .clipped()
-                        }
-                    } else if viewModel.isLoading {
-                        // Show placeholder grid items while loading
-                        ForEach(0..<12, id: \.self) { _ in
+                    ForEach(viewModel.videos.isEmpty && viewModel.isLoading ? (0..<12) : viewModel.videos.indices, id: \.self) { index in
+                        if index < viewModel.videos.count {
+                            NavigationLink {
+                                VideoDetailView(video: viewModel.videos[index])
+                            } label: {
+                                VideoThumbnailView(video: viewModel.videos[index])
+                                    .aspectRatio(9/16, contentMode: .fill)
+                                    .clipped()
+                            }
+                        } else {
+                            // Placeholder for initial loading
                             Color.gray.opacity(0.3)
                                 .aspectRatio(9/16, contentMode: .fill)
-                                .overlay {
-                                    ProgressView()
-                                }
                         }
                     }
                 }
                 .padding(1)
                 
                 if viewModel.isLoading && !viewModel.videos.isEmpty {
-                    ProgressView()
+                    Text("Loading more videos...")
+                        .foregroundColor(.secondary)
                         .padding()
                 }
                 
@@ -97,45 +45,30 @@ struct ProfileView: View {
                         .padding()
                 }
             }
-        }
-        .overlay {
-            if viewModel.isLoading {
-                ProgressView()
-            }
+            .navigationTitle("Profile")
+            .navigationBarTitleDisplayMode(.inline)
         }
         .refreshable {
-            // Force refresh when user explicitly pulls to refresh
             await viewModel.forceRefreshVideos()
         }
         .task {
-            // Initial load only
             await viewModel.loadVideos()
         }
         .onChange(of: authViewModel.isAuthenticated) { _, _ in
-            // Reload when auth state changes
             Task { 
                 await viewModel.forceRefreshVideos()
             }
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Edit") {
-                    isEditingProfile = true
+                Button {
+                    Task {
+                        try await authViewModel.signOut()
+                    }
+                } label: {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
                 }
             }
-        }
-        .sheet(isPresented: $isEditingProfile) {
-            // Refresh profile after dismissing edit sheet
-            Task {
-                await viewModel.loadProfile()
-                await viewModel.loadVideos()
-            }
-        } content: {
-            EditProfileView(
-                profile: viewModel.profile,
-                storage: viewModel.storageManager,
-                database: viewModel.databaseManager
-            )
         }
     }
 }
