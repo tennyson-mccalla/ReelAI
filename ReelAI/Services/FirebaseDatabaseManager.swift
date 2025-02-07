@@ -5,15 +5,32 @@ final class FirebaseDatabaseManager: DatabaseManager {
 
     func updateProfile(_ profile: UserProfile) async throws {
         let data = try JSONEncoder().encode(profile)
-        let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        var dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+
+        // Ensure required fields
+        dict["id"] = profile.id
+        dict["displayName"] = profile.displayName
+        dict["bio"] = profile.bio
+        dict["socialLinks"] = profile.socialLinks
+        if let photoURL = profile.photoURL?.absoluteString {
+            dict["photoURL"] = photoURL
+        }
+
         try await db.child("users").child(profile.id).updateChildValues(dict)
     }
 
     func fetchProfile(userId: String) async throws -> UserProfile {
         let snapshot = try await db.child("users").child(userId).getData()
-        guard let data = snapshot.value as? [String: Any] else {
+        guard var data = snapshot.value as? [String: Any] else {
             throw DatabaseError.invalidData
         }
+
+        // Ensure all required fields exist with defaults
+        data["id"] = userId
+        if data["displayName"] == nil { data["displayName"] = "New User" }
+        if data["bio"] == nil { data["bio"] = "" }
+        if data["socialLinks"] == nil { data["socialLinks"] = [] }
+
         let jsonData = try JSONSerialization.data(withJSONObject: data)
         return try JSONDecoder().decode(UserProfile.self, from: jsonData)
     }

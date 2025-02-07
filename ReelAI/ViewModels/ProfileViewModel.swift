@@ -9,32 +9,77 @@ class ProfileViewModel: ObservableObject {
     @Published private(set) var videos: [Video] = []
     @Published private(set) var error: Error?
     @Published private(set) var isLoading = false
+    @Published private(set) var profile: UserProfile
 
     let authService: AuthServiceProtocol
     private let db = Database.database().reference()
     private let storage = Storage.storage().reference()
-    private let _storageManager: StorageManager
-    private let _databaseManager: DatabaseManager
-    private var currentProfile: UserProfile
+    let storageManager: StorageManager
+    let databaseManager: DatabaseManager
 
     private var thumbnailCache: [TimeInterval: StorageReference]?
 
     init(
         authService: AuthServiceProtocol,
         storage: StorageManager = FirebaseStorageManager(),
-        database: DatabaseManager = FirebaseDatabaseManager(),
-        initialProfile: UserProfile
+        database: DatabaseManager = FirebaseDatabaseManager()
     ) {
         self.authService = authService
-        self._storageManager = storage
-        self._databaseManager = database
-        self.currentProfile = initialProfile
+        self.storageManager = storage
+        self.databaseManager = database
+
+        // Initialize with a temporary profile that will be replaced
+        if let userId = authService.currentUser?.uid {
+            self.profile = UserProfile(
+                id: userId,
+                displayName: authService.currentUser?.displayName ?? "New User",
+                bio: "",
+                photoURL: authService.currentUser?.photoURL,
+                socialLinks: []
+            )
+        } else {
+            self.profile = UserProfile.mock // Temporary fallback
+        }
+
+        // Load the real profile
+        Task {
+            await loadProfile()
+        }
+    }
+
+    func loadProfile() async {
+        guard let userId = authService.currentUser?.uid else { return }
+
+        do {
+            let loadedProfile = try await databaseManager.fetchProfile(userId: userId)
+            await MainActor.run {
+                self.profile = loadedProfile
+            }
+        } catch {
+            print("❌ Failed to load profile: \(error)")
+            // Create new profile if none exists
+            let newProfile = UserProfile(
+                id: userId,
+                displayName: authService.currentUser?.displayName ?? "New User",
+                bio: "",
+                photoURL: authService.currentUser?.photoURL,
+                socialLinks: [] // Explicitly set empty array
+            )
+
+            do {
+                try await databaseManager.updateProfile(newProfile)
+                await MainActor.run {
+                    self.profile = newProfile
+                }
+            } catch {
+                print("❌ Failed to create new profile: \(error)")
+            }
+        }
     }
 
     static func createDefault() async -> ProfileViewModel {
         return ProfileViewModel(
-            authService: FirebaseAuthService(),
-            initialProfile: UserProfile.mock
+            authService: FirebaseAuthService()
         )
     }
 
@@ -171,17 +216,5 @@ class ProfileViewModel: ObservableObject {
         }
 
         return videos.sorted(by: { $0.createdAt > $1.createdAt })
-    }
-
-    public var profile: UserProfile {
-        return currentProfile
-    }
-
-    public var storageManager: StorageManager {
-        return _storageManager
-    }
-
-    public var databaseManager: DatabaseManager {
-        return _databaseManager
     }
 }

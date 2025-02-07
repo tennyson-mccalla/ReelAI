@@ -9,8 +9,7 @@ struct ProfileView: View {
 
     init(viewModel: ProfileViewModel? = nil) {
         let wrappedValue = viewModel ?? ProfileViewModel(
-            authService: FirebaseAuthService(),
-            initialProfile: UserProfile.mock
+            authService: FirebaseAuthService()
         )
         _viewModel = StateObject(wrappedValue: wrappedValue)
     }
@@ -18,21 +17,50 @@ struct ProfileView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                // Sign Out Button
-                HStack {
-                    Spacer()
-                    Button("Sign Out") {
-                        authViewModel.signOut()
+                // Profile Header
+                VStack(spacing: 12) {
+                    // Profile Photo
+                    AsyncImage(url: viewModel.profile.photoURL) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        Image(systemName: "person.circle.fill")
+                            .resizable()
+                            .foregroundColor(.gray)
                     }
-                    .foregroundColor(.red)
-                    .padding()
-                }
+                    .frame(width: 100, height: 100)
+                    .clipShape(Circle())
 
-                // User Info
-                if let email = viewModel.authService.currentUser?.email {
-                    Text(email)
-                        .font(.headline)
+                    // Display Name
+                    Text(viewModel.profile.displayName)
+                        .font(.title2)
+                        .bold()
+
+                    // Bio if available
+                    if !viewModel.profile.bio.isEmpty {
+                        Text(viewModel.profile.bio)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+
+                    // Email
+                    if let email = viewModel.authService.currentUser?.email {
+                        Text(email)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
+                .padding(.top)
+
+                // Sign Out Button
+                Button("Sign Out") {
+                    authViewModel.signOut()
+                }
+                .foregroundColor(.red)
+                .padding()
 
                 // Video Grid
                 if !viewModel.videos.isEmpty {
@@ -69,6 +97,12 @@ struct ProfileView: View {
             }
         }
         .sheet(isPresented: $isEditingProfile) {
+            // Refresh profile after dismissing edit sheet
+            Task {
+                await viewModel.loadProfile()
+                await viewModel.loadVideos()
+            }
+        } content: {
             EditProfileView(
                 profile: viewModel.profile,
                 storage: viewModel.storageManager,

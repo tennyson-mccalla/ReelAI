@@ -1,16 +1,44 @@
 import Foundation
 import FirebaseStorage
+import FirebaseAuth
 
 final class FirebaseStorageManager: StorageManager {
     private let storage = Storage.storage().reference()
 
+    enum StorageError: Error {
+        case notAuthenticated
+        case uploadFailed(Error)
+    }
+
     func uploadProfilePhoto(_ data: Data, userId: String) async throws -> URL {
-        let photoRef = storage.child("profile_photos/\(userId).jpg")
+        guard let currentUser = Auth.auth().currentUser else {
+            throw StorageError.notAuthenticated
+        }
+
+        // Verify user is uploading their own photo
+        guard currentUser.uid == userId else {
+            throw StorageError.notAuthenticated
+        }
+
+        // Changed path to match storage rules structure
+        let filename = "\(UUID().uuidString).jpg"
+        let photoRef = storage.child("profile_photos/\(userId)/\(filename)")
+
         let metadata = StorageMetadata()
         metadata.contentType = "image/jpeg"
 
-        _ = try await photoRef.putDataAsync(data, metadata: metadata)
-        return try await photoRef.downloadURL()
+        do {
+            print("📤 Starting upload to: \(photoRef.fullPath)")
+            _ = try await photoRef.putDataAsync(data, metadata: metadata)
+            print("✅ Upload successful")
+            let url = try await photoRef.downloadURL()
+            print("📍 Download URL: \(url)")
+            return url
+        } catch {
+            print("❌ Upload failed with error: \(error)")
+            print("- Error description: \(error.localizedDescription)")
+            throw StorageError.uploadFailed(error)
+        }
     }
 
     func uploadVideo(_ url: URL, name: String) async throws -> URL {
