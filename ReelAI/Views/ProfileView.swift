@@ -1,5 +1,8 @@
 import SwiftUI
 import os
+import FirebaseAuth
+import FirebaseStorage
+import FirebaseDatabase
 
 struct ProfileView: View {
     @StateObject private var viewModel: ProfileViewModel
@@ -7,8 +10,13 @@ struct ProfileView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 1), count: 3)
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfileView")
     
-    init(viewModel: ProfileViewModel = ProfileViewModel()) {
-        _viewModel = StateObject(wrappedValue: viewModel)
+    init(viewModel: ProfileViewModel? = nil) {
+        let wrappedValue = viewModel ?? ProfileViewModel(
+            authService: FirebaseAuthService(),
+            storageManager: FirebaseStorageManager(),
+            databaseManager: FirebaseDatabaseManager()
+        )
+        _viewModel = StateObject(wrappedValue: wrappedValue)
     }
     
     var body: some View {
