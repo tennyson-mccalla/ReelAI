@@ -94,6 +94,20 @@ actor VideoCacheManager {
         }
     }
     
+    private func moveFileToCache(from tempURL: URL, to targetURL: URL) throws {
+        do {
+            if fileManager.fileExists(atPath: targetURL.path) {
+                logger.info("File already exists in cache, removing old version: \(targetURL.lastPathComponent)")
+                try fileManager.removeItem(at: targetURL)
+            }
+            try fileManager.moveItem(at: tempURL, to: targetURL)
+            logger.info("Successfully moved file to cache: \(targetURL.lastPathComponent)")
+        } catch {
+            logger.error("Failed to move file to cache: \(error.localizedDescription)")
+            throw error
+        }
+    }
+    
     // MARK: - Public Methods
     
     func cacheVideo(from url: URL, withIdentifier id: String) async throws -> URL {
@@ -106,7 +120,7 @@ actor VideoCacheManager {
         
         // Download and cache
         let (downloadURL, _) = try await URLSession.shared.download(from: url)
-        try fileManager.moveItem(at: downloadURL, to: cachedFileURL)
+        try moveFileToCache(from: downloadURL, to: cachedFileURL)
         
         logger.debug("Cached video for id: \(id)")
         return cachedFileURL
@@ -198,18 +212,27 @@ actor VideoCacheManager {
         }
     }
     
-    func logCacheStatus() async {
-        do {
-            let videoSize = try await calculateCacheSize()
-            let thumbnailSize = try await calculateThumbnailCacheSize()
-            logger.info("💾 Cache sizes:")
-            logger.info("   Video: \(videoSize/1024/1024)MB")
-            logger.info("   Thumbnail: \(thumbnailSize/1024/1024)MB")
-            
-            let contents = try fileManager.contentsOfDirectory(at: thumbnailCacheDirectory, includingPropertiesForKeys: nil)
-            logger.info("🖼️ Found \(contents.count) cached thumbnails")
-        } catch {
-            logger.error("Failed to log cache status: \(error.localizedDescription)")
+    func logCacheStatus() {
+        Task {
+            do {
+                let thumbnailFiles = try fileManager.contentsOfDirectory(at: thumbnailCacheDirectory, includingPropertiesForKeys: [.fileSizeKey])
+                let videoFiles = try fileManager.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: [.fileSizeKey])
+                
+                let thumbnailSize = thumbnailFiles.reduce(0) { total, url in
+                    (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) ?? 0 + total
+                }
+                let videoSize = videoFiles.reduce(0) { total, url in
+                    (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) ?? 0 + total
+                }
+                
+                logger.info("""
+                    📂 Cache Status:
+                    Thumbnails: \(thumbnailFiles.count) files (\(ByteCountFormatter.string(fromByteCount: Int64(thumbnailSize), countStyle: .file)))
+                    Videos: \(videoFiles.count) files (\(ByteCountFormatter.string(fromByteCount: Int64(videoSize), countStyle: .file)))
+                    """)
+            } catch {
+                logger.error("Failed to get cache status: \(error.localizedDescription)")
+            }
         }
     }
 }
