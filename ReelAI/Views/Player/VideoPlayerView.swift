@@ -45,8 +45,8 @@ struct VideoPlayerView: View {
                     }
                     .ignoresSafeArea(.all)
                     .frame(width: geometry.size.width, height: geometry.size.height)
-                    .onChange(of: feedViewModel.currentlyPlayingId) { _, playingId in
-                        if playingId != videoId {
+                    .onChange(of: feedViewModel.currentlyPlayingId) { _, newValue in
+                        if newValue != videoId {
                             playerViewModel.player?.pause()
                             playerViewModel.cleanup()
                         } else {
@@ -104,7 +104,7 @@ struct VideoPlayerView: View {
                 .onChanged { _ in
                     // Optionally pause video during drag
                 }
-                .onEnded { value in
+                .onEnded { _ in
                     // Handle drag completion if needed
                 }
         )

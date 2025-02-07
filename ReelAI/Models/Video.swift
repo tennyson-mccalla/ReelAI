@@ -84,7 +84,7 @@ extension Video {
         Video(
             id: "mock-id",
             userId: "mock-user",
-            videoURL: URL(string: "https://example.com/video.mp4")!,
+            videoURL: URL(string: "https://example.com/video.mp4") ?? URL(fileURLWithPath: ""),
             thumbnailURL: URL(string: "https://example.com/thumb.jpg"),
             createdAt: Date(),
             caption: "Mock video",
