@@ -12,9 +12,7 @@ struct ProfileView: View {
     
     init(viewModel: ProfileViewModel? = nil) {
         let wrappedValue = viewModel ?? ProfileViewModel(
-            authService: FirebaseAuthService(),
-            storageManager: FirebaseStorageManager(),
-            databaseManager: FirebaseDatabaseManager()
+            authService: FirebaseAuthService()
         )
         _viewModel = StateObject(wrappedValue: wrappedValue)
     }
@@ -25,10 +23,35 @@ struct ProfileView: View {
                 LazyVGrid(columns: columns, spacing: 1) {
                     ForEach(viewModel.videos.isEmpty && viewModel.isLoading ? (0..<12) : viewModel.videos.indices, id: \.self) { index in
                         if index < viewModel.videos.count {
+                            let video = viewModel.videos[index]
                             NavigationLink {
-                                VideoDetailView(video: viewModel.videos[index])
+                                ScrollView {
+                                    VStack(spacing: 16) {
+                                        VideoThumbnailView(video: video)
+                                            .aspectRatio(9/16, contentMode: .fit)
+                                            .frame(maxWidth: .infinity)
+                                            .clipped()
+                                        
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            Text(video.title ?? "Untitled Video")
+                                                .font(.headline)
+                                            
+                                            if let description = video.description {
+                                                Text(description)
+                                                    .font(.body)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            
+                                            Text("Duration: \(Int(video.duration ?? 0)) seconds")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                        .padding()
+                                    }
+                                }
+                                .navigationTitle("Video Details")
                             } label: {
-                                VideoThumbnailView(video: viewModel.videos[index])
+                                VideoThumbnailView(video: video)
                                     .aspectRatio(9/16, contentMode: .fill)
                                     .clipped()
                             }
