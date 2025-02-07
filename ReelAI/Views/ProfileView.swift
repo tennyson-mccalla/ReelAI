@@ -39,38 +39,11 @@ struct ProfileView: View {
                     }
                 }
 
-                #if DEBUG
                 VStack {
                     Spacer()
-                    HStack {
-                        Button(action: {
-                            Task {
-                                await VideoCacheManager.shared.logCacheStatus()
-                            }
-                        }) {
-                            Label("Cache Status", systemImage: "info.circle")
-                                .padding(8)
-                                .background(Color.black.opacity(0.7))
-                                .foregroundColor(.white)
-                                .cornerRadius(8)
-                        }
-
-                        Button(action: {
-                            Task {
-                                try? await VideoCacheManager.shared.clearCache()
-                                await viewModel.loadVideos()
-                            }
-                        }) {
-                            Label("Clear Cache", systemImage: "trash")
-                                .padding(8)
-                                .background(Color.black.opacity(0.7))
-                                .foregroundColor(.white)
-                                .cornerRadius(8)
-                        }
-                    }
-                    .padding()
+                    CacheDebugButtons(viewModel: viewModel)
+                        .padding()
                 }
-                #endif
             }
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
@@ -121,6 +94,39 @@ struct ProfileView: View {
             }
         } label: {
             Image(systemName: "rectangle.portrait.and.arrow.right")
+        }
+    }
+}
+
+struct CacheDebugButtons: View {
+    @ObservedObject var viewModel: ProfileViewModel
+    
+    var body: some View {
+        HStack {
+            Button(action: {
+                Task {
+                    VideoCacheManager.shared.logCacheStatus()
+                }
+            }) {
+                Label("Cache Status", systemImage: "info.circle")
+                    .padding(8)
+                    .background(Color.black.opacity(0.7))
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+            }
+
+            Button(action: {
+                Task {
+                    try? await VideoCacheManager.shared.clearCache()
+                    await viewModel.loadVideos()
+                }
+            }) {
+                Label("Clear Cache", systemImage: "trash")
+                    .padding(8)
+                    .background(Color.black.opacity(0.7))
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+            }
         }
     }
 }
