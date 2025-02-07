@@ -82,7 +82,11 @@ struct ProfileView: View {
     private var signOutButton: some View {
         Button {
             Task {
-                try await authViewModel.signOut()
+                do {
+                    try await authViewModel.signOut()
+                } catch {
+                    logger.error("Error signing out: \(error.localizedDescription)")
+                }
             }
         } label: {
             Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -134,18 +138,22 @@ private extension ProfileView {
                         .clipped()
                     
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(video.title ?? "Untitled Video")
+                        Text(video.caption)
                             .font(.headline)
                         
-                        if let description = video.description {
-                            Text(description)
-                                .font(.body)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Text("Duration: \(Int(video.duration ?? 0)) seconds")
+                        Text("Created: \(video.createdAt.formatted())")
                             .font(.caption)
                             .foregroundColor(.secondary)
+                        
+                        HStack {
+                            Image(systemName: "heart")
+                            Text("\(video.likes)")
+                            
+                            Image(systemName: "message")
+                            Text("\(video.comments)")
+                        }
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                     }
                     .padding()
                 }
