@@ -82,7 +82,7 @@ struct ProfileView: View {
     private var signOutButton: some View {
         Button {
             Task {
-                await authViewModel.signOut()
+                authViewModel.signOut()
             }
         } label: {
             Image(systemName: "rectangle.portrait.and.arrow.right")
