@@ -166,11 +166,18 @@ actor VideoCacheManager {
     }
 
     func clearCache() async throws {
+        // Clear both caches
+        try await clearVideoCache()
+        try await clearThumbnailCache()
+        await logCacheStatus()
+    }
+
+    private func clearVideoCache() async throws {
         let contents = try fileManager.contentsOfDirectory(at: videoCacheDirectory, includingPropertiesForKeys: nil)
         for url in contents {
             try removeFile(at: url)
         }
-        logger.info("Cache cleared")
+        logger.info("Video cache cleared")
     }
 
     func clearThumbnailCache() async throws {
@@ -213,8 +220,9 @@ actor VideoCacheManager {
         Task { [self] in
             do {
                 let thumbnailFiles = try fileManager.contentsOfDirectory(at: thumbnailCacheDirectory, includingPropertiesForKeys: [.fileSizeKey])
+                    .filter { $0.lastPathComponent != ".nomedia" }
                 let videoFiles = try fileManager.contentsOfDirectory(at: videoCacheDirectory, includingPropertiesForKeys: [.fileSizeKey])
-
+                
                 let thumbnailSize = thumbnailFiles.reduce(0) { total, url in
                     guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return total }
                     return total + size
@@ -224,7 +232,7 @@ actor VideoCacheManager {
                     return total + size
                 }
 
-                logger.info("""
+                let status = """
                     📂 Cache Status:
                     Cache directories:
                       Thumbnails: \(self.thumbnailCacheDirectory.path)
@@ -233,11 +241,16 @@ actor VideoCacheManager {
                       Thumbnails: \(thumbnailFiles.count) files (\(ByteCountFormatter.string(fromByteCount: Int64(thumbnailSize), countStyle: .file)))
                       Videos: \(videoFiles.count) files (\(ByteCountFormatter.string(fromByteCount: Int64(videoSize), countStyle: .file)))
                     Files:
-                      Thumbnails: \(thumbnailFiles.map { $0.lastPathComponent }.joined(separator: ", "))
-                      Videos: \(videoFiles.map { $0.lastPathComponent }.joined(separator: ", "))
-                    """)
+                      Thumbnails: \(thumbnailFiles.map { $0.lastPathComponent }.sorted().joined(separator: ", "))
+                      Videos: \(videoFiles.map { $0.lastPathComponent }.sorted().joined(separator: ", "))
+                    """
+                
+                logger.info(status)
+                print(status) // Also print to console for debugging
             } catch {
-                logger.error("Failed to get cache status: \(error.localizedDescription)")
+                let errorMsg = "Failed to get cache status: \(error.localizedDescription)"
+                logger.error(errorMsg)
+                print(errorMsg) // Also print to console for debugging
             }
         }
     }
