@@ -82,11 +82,7 @@ struct ProfileView: View {
     private var signOutButton: some View {
         Button {
             Task {
-                do {
-                    try await authViewModel.signOut()
-                } catch {
-                    logger.error("Error signing out: \(error.localizedDescription)")
-                }
+                await authViewModel.signOut()
             }
         } label: {
             Image(systemName: "rectangle.portrait.and.arrow.right")
