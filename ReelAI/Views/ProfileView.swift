@@ -20,50 +20,7 @@ struct ProfileView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                LazyVGrid(columns: columns, spacing: 1) {
-                    ForEach(viewModel.videos.isEmpty && viewModel.isLoading ? (0..<12) : viewModel.videos.indices, id: \.self) { index in
-                        if index < viewModel.videos.count {
-                            let video = viewModel.videos[index]
-                            NavigationLink {
-                                ScrollView {
-                                    VStack(spacing: 16) {
-                                        VideoThumbnailView(video: video)
-                                            .aspectRatio(9/16, contentMode: .fit)
-                                            .frame(maxWidth: .infinity)
-                                            .clipped()
-                                        
-                                        VStack(alignment: .leading, spacing: 8) {
-                                            Text(video.title ?? "Untitled Video")
-                                                .font(.headline)
-                                            
-                                            if let description = video.description {
-                                                Text(description)
-                                                    .font(.body)
-                                                    .foregroundColor(.secondary)
-                                            }
-                                            
-                                            Text("Duration: \(Int(video.duration ?? 0)) seconds")
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }
-                                        .padding()
-                                    }
-                                }
-                                .navigationTitle("Video Details")
-                            } label: {
-                                VideoThumbnailView(video: video)
-                                    .aspectRatio(9/16, contentMode: .fill)
-                                    .clipped()
-                            }
-                        } else {
-                            // Placeholder for initial loading
-                            Color.gray.opacity(0.3)
-                                .aspectRatio(9/16, contentMode: .fill)
-                        }
-                    }
-                }
-                .padding(1)
-                
+                gridContent
                 if viewModel.isLoading && !viewModel.videos.isEmpty {
                     Text("Loading more videos...")
                         .foregroundColor(.secondary)
@@ -78,6 +35,11 @@ struct ProfileView: View {
             }
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    signOutButton
+                }
+            }
         }
         .refreshable {
             await viewModel.forceRefreshVideos()
@@ -90,16 +52,101 @@ struct ProfileView: View {
                 await viewModel.forceRefreshVideos()
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    Task {
-                        try await authViewModel.signOut()
-                    }
+    }
+    
+    private var gridContent: some View {
+        LazyVGrid(columns: columns, spacing: 1) {
+            ForEach(gridItems.indices, id: \.self) { index in
+                gridItems[index]
+            }
+        }
+        .padding(1)
+    }
+    
+    private var gridItems: [GridItem] {
+        if viewModel.videos.isEmpty && viewModel.isLoading {
+            return (0..<12).map { _ in
+                GridItem(placeholder: true)
+            }
+        } else {
+            return viewModel.videos.map { video in
+                GridItem(video: video)
+            }
+        }
+    }
+    
+    private var signOutButton: some View {
+        Button {
+            Task {
+                try await authViewModel.signOut()
+            }
+        } label: {
+            Image(systemName: "rectangle.portrait.and.arrow.right")
+        }
+    }
+}
+
+// MARK: - Helper Types
+private extension ProfileView {
+    struct GridItem: View {
+        let video: Video?
+        let isPlaceholder: Bool
+        
+        init(video: Video) {
+            self.video = video
+            self.isPlaceholder = false
+        }
+        
+        init(placeholder: Bool) {
+            self.video = nil
+            self.isPlaceholder = true
+        }
+        
+        var body: some View {
+            if isPlaceholder {
+                Color.gray.opacity(0.3)
+                    .aspectRatio(9/16, contentMode: .fill)
+            } else if let video = video {
+                NavigationLink {
+                    VideoDetailsView(video: video)
                 } label: {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                    VideoThumbnailView(video: video)
+                        .aspectRatio(9/16, contentMode: .fill)
+                        .clipped()
                 }
             }
+        }
+    }
+    
+    struct VideoDetailsView: View {
+        let video: Video
+        
+        var body: some View {
+            ScrollView {
+                VStack(spacing: 16) {
+                    VideoThumbnailView(video: video)
+                        .aspectRatio(9/16, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(video.title ?? "Untitled Video")
+                            .font(.headline)
+                        
+                        if let description = video.description {
+                            Text(description)
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Text("Duration: \(Int(video.duration ?? 0)) seconds")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding()
+                }
+            }
+            .navigationTitle("Video Details")
         }
     }
 }
