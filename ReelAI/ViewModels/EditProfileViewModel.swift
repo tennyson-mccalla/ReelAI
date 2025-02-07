@@ -39,7 +39,7 @@ final class EditProfileViewModel: ObservableObject {
 
         do {
             // Validate image data
-            guard imageData.count > 0, imageData.count < 5_000_000 else { // 5MB limit
+            guard !imageData.isEmpty, imageData.count < 5_000_000 else { // 5MB limit
                 throw ValidationError.invalidImageData
             }
 
