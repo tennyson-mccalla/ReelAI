@@ -13,14 +13,14 @@ struct ProfileView: View {
         GridItem(.flexible())
     ]
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfileView")
-    
+
     init(viewModel: ProfileViewModel? = nil) {
         let wrappedValue = viewModel ?? ProfileViewModel(
             authService: FirebaseAuthService()
         )
         _viewModel = StateObject(wrappedValue: wrappedValue)
     }
-    
+
     var body: some View {
         NavigationView {
             ZStack {
@@ -31,14 +31,14 @@ struct ProfileView: View {
                             .foregroundColor(.secondary)
                             .padding()
                     }
-                    
+
                     if let error = viewModel.error {
                         Text("Error: \(error.localizedDescription)")
                             .foregroundColor(.red)
                             .padding()
                     }
                 }
-                
+
                 #if DEBUG
                 VStack {
                     Spacer()
@@ -54,11 +54,11 @@ struct ProfileView: View {
                                 .foregroundColor(.white)
                                 .cornerRadius(8)
                         }
-                        
+
                         Button(action: {
                             Task {
                                 try? await VideoCacheManager.shared.clearCache()
-                                await VideoCacheManager.shared.logCacheStatus()
+                                await viewModel.loadVideos()
                             }
                         }) {
                             Label("Clear Cache", systemImage: "trash")
@@ -87,12 +87,12 @@ struct ProfileView: View {
             await viewModel.loadVideos()
         }
         .onChange(of: authViewModel.isAuthenticated) { _, _ in
-            Task { 
+            Task {
                 await viewModel.forceRefreshVideos()
             }
         }
     }
-    
+
     private var gridContent: some View {
         LazyVGrid(columns: columns, spacing: 1) {
             ForEach(gridItems.indices, id: \.self) { index in
@@ -101,7 +101,7 @@ struct ProfileView: View {
         }
         .padding(1)
     }
-    
+
     private var gridItems: [ProfileGridItem] {
         if viewModel.videos.isEmpty && viewModel.isLoading {
             return (0..<12).map { _ in
@@ -113,7 +113,7 @@ struct ProfileView: View {
             }
         }
     }
-    
+
     private var signOutButton: some View {
         Button {
             Task {
@@ -130,17 +130,17 @@ private extension ProfileView {
     struct ProfileGridItem: View {
         let video: Video?
         let isPlaceholder: Bool
-        
+
         init(video: Video) {
             self.video = video
             self.isPlaceholder = false
         }
-        
+
         init(placeholder: Bool) {
             self.video = nil
             self.isPlaceholder = placeholder
         }
-        
+
         var body: some View {
             if isPlaceholder {
                 Color.gray.opacity(0.3)
@@ -156,10 +156,10 @@ private extension ProfileView {
             }
         }
     }
-    
+
     struct VideoDetailsView: View {
         let video: Video
-        
+
         var body: some View {
             ScrollView {
                 VStack(spacing: 16) {
@@ -167,19 +167,19 @@ private extension ProfileView {
                         .aspectRatio(9/16, contentMode: .fit)
                         .frame(maxWidth: .infinity)
                         .clipped()
-                    
+
                     VStack(alignment: .leading, spacing: 8) {
                         Text(video.caption)
                             .font(.headline)
-                        
+
                         Text("Created: \(video.createdAt.formatted())")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        
+
                         HStack {
                             Image(systemName: "heart")
                             Text("\(video.likes)")
-                            
+
                             Image(systemName: "message")
                             Text("\(video.comments)")
                         }

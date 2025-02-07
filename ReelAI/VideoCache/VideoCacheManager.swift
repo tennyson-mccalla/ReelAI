@@ -12,7 +12,12 @@ actor VideoCacheManager {
 
     static let shared: VideoCacheManager = {
         do {
-            return try VideoCacheManager()
+            let manager = try VideoCacheManager()
+            // Log initial cache status
+            Task {
+                manager.logCacheStatus()
+            }
+            return manager
         } catch {
             fatalError("Failed to initialize VideoCacheManager: \(error)")
         }
@@ -169,6 +174,11 @@ actor VideoCacheManager {
         // Clear both caches
         try await clearVideoCache()
         try await clearThumbnailCache()
+        
+        // Log status after clearing
+        let message = "Cache cleared successfully"
+        logger.info("\(message)")
+        print(message)
         logCacheStatus()
     }
 
@@ -177,15 +187,21 @@ actor VideoCacheManager {
         for url in contents {
             try removeFile(at: url)
         }
-        logger.info("Video cache cleared")
+        let message = "Video cache cleared (\(contents.count) files)"
+        logger.info("\(message)")
+        print(message)
     }
 
     func clearThumbnailCache() async throws {
         let contents = try fileManager.contentsOfDirectory(at: thumbnailCacheDirectory, includingPropertiesForKeys: nil)
+        var count = 0
         for url in contents where url.lastPathComponent != ".nomedia" {
             try removeFile(at: url)
+            count += 1
         }
-        logger.info("Thumbnail cache cleared")
+        let message = "Thumbnail cache cleared (\(count) files)"
+        logger.info("\(message)")
+        print(message)
     }
 
     func removeVideo(withIdentifier id: String) async throws {
