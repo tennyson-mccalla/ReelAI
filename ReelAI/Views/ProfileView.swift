@@ -1,19 +1,22 @@
 import SwiftUI
 import FirebaseAuth
+import os
 
 struct ProfileView: View {
     @StateObject private var viewModel: ProfileViewModel
     @Environment(\.refresh) private var refresh
     @EnvironmentObject var authViewModel: AuthViewModel
     @State private var isEditingProfile = false
-
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 1), count: 3)
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfileView")
+    
     init(viewModel: ProfileViewModel? = nil) {
         let wrappedValue = viewModel ?? ProfileViewModel(
             authService: FirebaseAuthService()
         )
         _viewModel = StateObject(wrappedValue: wrappedValue)
     }
-
+    
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
@@ -63,15 +66,35 @@ struct ProfileView: View {
                 .padding()
 
                 // Video Grid
-                if !viewModel.videos.isEmpty {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 2) {
+                LazyVGrid(columns: columns, spacing: 1) {
+                    if !viewModel.videos.isEmpty {
                         ForEach(viewModel.videos) { video in
                             VideoThumbnailView(video: video)
                                 .aspectRatio(9/16, contentMode: .fill)
                                 .clipped()
                         }
+                    } else if viewModel.isLoading {
+                        // Show placeholder grid items while loading
+                        ForEach(0..<12, id: \.self) { _ in
+                            Color.gray.opacity(0.3)
+                                .aspectRatio(9/16, contentMode: .fill)
+                                .overlay {
+                                    ProgressView()
+                                }
+                        }
                     }
-                    .padding(.horizontal, 2)
+                }
+                .padding(1)
+                
+                if viewModel.isLoading && !viewModel.videos.isEmpty {
+                    ProgressView()
+                        .padding()
+                }
+                
+                if let error = viewModel.error {
+                    Text("Error: \(error.localizedDescription)")
+                        .foregroundColor(.red)
+                        .padding()
                 }
             }
         }

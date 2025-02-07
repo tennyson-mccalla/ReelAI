@@ -13,15 +13,18 @@ struct VideoThumbnailView: View {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
+                    .transition(.opacity)
             } else {
-                Color.gray
+                Color.gray.opacity(0.3)
                     .overlay {
                         if isLoading {
                             ProgressView()
+                                .scaleEffect(0.7)
                         }
                     }
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: thumbnailImage != nil)
         .onAppear {
             // Start loading immediately when view appears
             Task {
@@ -39,8 +42,10 @@ struct VideoThumbnailView: View {
         if let cached = await VideoCacheManager.shared.getCachedThumbnail(withIdentifier: video.id) {
             logger.debug("✅ Loaded cached thumbnail for video: \(video.id) in \(Date().timeIntervalSince(start))s")
             await MainActor.run {
-                thumbnailImage = cached
-                isLoading = false
+                withAnimation {
+                    thumbnailImage = cached
+                    isLoading = false
+                }
             }
             return
         }
@@ -69,8 +74,10 @@ struct VideoThumbnailView: View {
             logger.debug("✅ Loaded and cached thumbnail for video: \(video.id) in \(Date().timeIntervalSince(start))s")
             
             await MainActor.run {
-                thumbnailImage = image
-                isLoading = false
+                withAnimation {
+                    thumbnailImage = image
+                    isLoading = false
+                }
             }
         } catch {
             logger.error("❌ Failed to load thumbnail for video \(video.id): \(error.localizedDescription)")
