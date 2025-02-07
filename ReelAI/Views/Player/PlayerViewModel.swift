@@ -1,4 +1,5 @@
 import AVFoundation
+import os
 
 @MainActor
 final class PlayerViewModel: NSObject, ObservableObject {
@@ -6,6 +7,7 @@ final class PlayerViewModel: NSObject, ObservableObject {
     @Published var isReadyToPlay = false
     @Published var progress: Double = 0
     private var shouldLoop = true
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "PlayerViewModel")
 
     private var timeObserver: Any?
     private var readyForDisplayObserver: NSKeyValueObservation?
@@ -25,7 +27,7 @@ final class PlayerViewModel: NSObject, ObservableObject {
 
     func loadVideo(playerItem: AVPlayerItem) {
         let startTime = CFAbsoluteTimeGetCurrent()
-        print("🎬 Starting video load: \(CFAbsoluteTimeGetCurrent())")
+        logger.debug("🎬 Starting video load: \(CFAbsoluteTimeGetCurrent())")
 
         playerItem.preferredForwardBufferDuration = 10
         playerItem.automaticallyPreservesTimeOffsetFromLive = false
@@ -53,7 +55,7 @@ final class PlayerViewModel: NSObject, ObservableObject {
             Task { @MainActor in
                 if item.isPlaybackLikelyToKeepUp {
                     let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-                    print("📺 Video playback ready: \(elapsed) seconds")
+                    logger.debug("📺 Video playback ready: \(elapsed) seconds")
                     self?.handleReadyToPlay()
                 }
             }
@@ -92,7 +94,7 @@ final class PlayerViewModel: NSObject, ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                print("📼 Video reached end naturally")
+                self?.logger.debug("📼 Video playback ended")
                 self?.handlePlaybackEnd()
             }
         }
@@ -124,7 +126,7 @@ final class PlayerViewModel: NSObject, ObservableObject {
     }
 
     private func handlePlaybackError() {
-        print("❌ Playback failed")
+        logger.error("❌ Playback failed")
     }
 
     @available(iOS 16.0, *)
@@ -140,7 +142,7 @@ final class PlayerViewModel: NSObject, ObservableObject {
                     }
                 }
             } catch {
-                print("❌ Failed to load asset: \(error.localizedDescription)")
+                logger.error("❌ Failed to load asset: \(error.localizedDescription)")
             }
         }
     }

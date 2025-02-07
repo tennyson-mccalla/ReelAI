@@ -76,8 +76,8 @@
       </BuildableProductRunnable>
       <EnvironmentVariables>
          <EnvironmentVariable
-            key = "CODE_SIGN_LOG_LEVEL = 3"
-            value = ""
+            key = "CODE_SIGN_LOG_LEVEL"
+            value = "3"
             isEnabled = "YES">
          </EnvironmentVariable>
       </EnvironmentVariables>

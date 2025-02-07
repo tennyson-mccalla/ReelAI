@@ -10,6 +10,9 @@ class ProfileViewModel: ObservableObject {
     @Published private(set) var error: Error?
     @Published private(set) var isLoading = false
     @Published private(set) var profile: UserProfile
+    private var hasLoadedVideos = false
+    private var cachedVideos: [Video]?
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfileViewModel")
 
     let authService: AuthServiceProtocol
     private let db = Database.database().reference()
@@ -41,9 +44,25 @@ class ProfileViewModel: ObservableObject {
             self.profile = UserProfile.mock // Temporary fallback
         }
 
+        // Set up notification observer for cache clearing
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCacheCleared),
+            name: .videoCacheCleared,
+            object: nil
+        )
+
         // Load the real profile
         Task {
             await loadProfile()
+        }
+    }
+
+    @objc private func handleCacheCleared() {
+        Task {
+            // Force reload videos from Firebase when cache is cleared
+            cachedVideos = nil
+            await loadVideos()
         }
     }
 
@@ -84,64 +103,89 @@ class ProfileViewModel: ObservableObject {
     }
 
     func loadVideos() async {
+        guard !isLoading else { return }
         guard let userId = authService.currentUser?.uid else { return }
 
         isLoading = true
-        error = nil
+        logger.info("🎬 Starting to load videos")
 
         do {
+            if let cached = cachedVideos {
+                videos = cached
+                logger.debug("📼 Using cached videos")
+                isLoading = false
+                return
+            }
+
             let snapshot = try await db.child("videos")
                 .queryOrdered(byChild: "timestamp")
                 .queryLimited(toLast: 50)
                 .getData()
 
-            print("📄 Got \(snapshot.childrenCount) videos")
+            print("📄 Got \(snapshot.childrenCount) videos from database")
+            let loadedVideos = try await loadVideosFromSnapshot(snapshot, userId: userId)
+            
+            await MainActor.run {
+                self.videos = loadedVideos.sorted { $0.createdAt > $1.createdAt }
+                self.cachedVideos = loadedVideos.sorted { $0.createdAt > $1.createdAt }
+                logger.info("📄 Got \(loadedVideos.count) videos from database")
+                isLoading = false
+                hasLoadedVideos = true
+            }
+        } catch {
+            await MainActor.run {
+                self.error = error
+                logger.error("❌ Failed to load videos: \(error.localizedDescription)")
+                isLoading = false
+            }
+        }
+    }
 
-            var loadedVideos: [Video] = []
-            for child in snapshot.children {
-                guard let snapshot = child as? DataSnapshot,
-                      let data = snapshot.value as? [String: Any],
-                      let videoName = data["videoName"] as? String,
-                      let timestamp = data["timestamp"] as? TimeInterval else {
-                    continue
-                }
+    func forceRefreshVideos() async {
+        hasLoadedVideos = false
+        await loadVideos()
+    }
 
-                do {
-                    let videoRef = storage.child("videos/\(videoName)")
-                    let videoURL = try await videoRef.downloadURL()
-                    let videoMetadata = try await videoRef.getMetadata()
-
-                    // Try to get thumbnail but don't fail if not found
-                    let thumbnailURL: URL? = try? await getThumbnailURL(
-                        for: videoName,
-                        timestamp: videoMetadata.timeCreated?.timeIntervalSince1970 ?? timestamp
-                    )
-
-                    let video = Video(
-                        id: snapshot.key,
-                        userId: data["userId"] as? String ?? userId,
-                        videoURL: videoURL,
-                        thumbnailURL: thumbnailURL,
-                        createdAt: Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000.0),
-                        caption: data["caption"] as? String ?? "",
-                        likes: data["likes"] as? Int ?? 0,
-                        comments: data["comments"] as? Int ?? 0
-                    )
-                    loadedVideos.append(video)
-                } catch {
-                    print("❌ Failed to load video: \(videoName)")
-                    continue
-                }
+    private func loadVideosFromSnapshot(_ snapshot: DataSnapshot, userId: String) async throws -> [Video] {
+        var loadedVideos: [Video] = []
+        
+        for child in snapshot.children {
+            guard let snapshot = child as? DataSnapshot,
+                  let data = snapshot.value as? [String: Any],
+                  let videoName = data["videoName"] as? String,
+                  let timestamp = data["timestamp"] as? TimeInterval else {
+                continue
             }
 
-            videos = loadedVideos.sorted { $0.createdAt > $1.createdAt }
+            do {
+                let videoRef = storage.child("videos/\(videoName)")
+                let videoURL = try await videoRef.downloadURL()
+                let videoMetadata = try await videoRef.getMetadata()
 
-        } catch {
-            print("❌ Error loading videos: \(error)")
-            self.error = error
+                // Try to get thumbnail but don't fail if not found
+                let thumbnailURL: URL? = try? await getThumbnailURL(
+                    for: videoName,
+                    timestamp: videoMetadata.timeCreated?.timeIntervalSince1970 ?? timestamp
+                )
+
+                let video = Video(
+                    id: snapshot.key,
+                    userId: data["userId"] as? String ?? userId,
+                    videoURL: videoURL,
+                    thumbnailURL: thumbnailURL,
+                    createdAt: Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000.0),
+                    caption: data["caption"] as? String ?? "",
+                    likes: data["likes"] as? Int ?? 0,
+                    comments: data["comments"] as? Int ?? 0
+                )
+                loadedVideos.append(video)
+            } catch {
+                print("❌ Failed to load video: \(videoName)")
+                continue
+            }
         }
-
-        isLoading = false
+        
+        return loadedVideos
     }
 
     func setVideos(_ newVideos: [Video]) {
