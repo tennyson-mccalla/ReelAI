@@ -27,7 +27,11 @@ struct VideoThumbnailView: View {
                                 // Cache the thumbnail
                                 Task {
                                     if let uiImage = image.asUIImage() {
-                                        try? await VideoCacheManager.shared.cacheThumbnail(uiImage, withIdentifier: video.id)
+                                        do {
+                                            _ = try await VideoCacheManager.shared.cacheThumbnail(uiImage, withIdentifier: video.id)
+                                        } catch {
+                                            print("Failed to cache thumbnail: \(error)")
+                                        }
                                     }
                                 }
                             }
@@ -46,9 +50,7 @@ struct VideoThumbnailView: View {
         }
         .task {
             // Try to load from cache first
-            if let cached = VideoCacheManager.shared.getCachedThumbnail(withIdentifier: video.id) {
-                cachedImage = cached
-            }
+            cachedImage = VideoCacheManager.shared.getCachedThumbnail(withIdentifier: video.id)
         }
     }
 }

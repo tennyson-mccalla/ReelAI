@@ -134,7 +134,11 @@ class ProfileViewModel: ObservableObject {
                         do {
                             let (data, _) = try await URLSession.shared.data(from: thumbnailURL)
                             if let image = UIImage(data: data) {
-                                try? await VideoCacheManager.shared.cacheThumbnail(image, withIdentifier: snapshot.key)
+                                do {
+                                    _ = try await VideoCacheManager.shared.cacheThumbnail(image, withIdentifier: snapshot.key)
+                                } catch {
+                                    print("Failed to cache thumbnail for video \(snapshot.key): \(error)")
+                                }
                             }
                         } catch {
                             print("Failed to preload thumbnail for video \(snapshot.key): \(error)")
