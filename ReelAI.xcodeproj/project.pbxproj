@@ -13,6 +13,7 @@
 		4C66FF662D516BE30095FCBE /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 4C66FF652D516BE30095FCBE /* FirebaseAnalytics */; };
 		4C66FF682D516BE30095FCBE /* FirebaseAnalyticsWithoutAdIdSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 4C66FF672D516BE30095FCBE /* FirebaseAnalyticsWithoutAdIdSupport */; };
 		4C7611412D540A2800D24827 /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = 4C7611402D540A2800D24827 /* FirebaseDatabase */; };
+		4CDCA7FA2D56BE1D0009BFBC /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4CDCA7F92D56BE1D0009BFBC /* GoogleService-Info.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,6 +37,7 @@
 		4C8773502D514B1F009D99EE /* ReelAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ReelAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C8773602D514B21009D99EE /* ReelAITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ReelAITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C87736A2D514B21009D99EE /* ReelAIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ReelAIUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		4CDCA7F92D56BE1D0009BFBC /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -90,6 +92,7 @@
 		4C8773472D514B1F009D99EE = {
 			isa = PBXGroup;
 			children = (
+				4CDCA7F92D56BE1D0009BFBC /* GoogleService-Info.plist */,
 				4C8773522D514B1F009D99EE /* ReelAI */,
 				4C8773632D514B21009D99EE /* ReelAITests */,
 				4C87736D2D514B21009D99EE /* ReelAIUITests */,
@@ -236,6 +239,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4CDCA7FA2D56BE1D0009BFBC /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

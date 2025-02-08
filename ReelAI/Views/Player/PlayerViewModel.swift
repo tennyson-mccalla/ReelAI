@@ -27,7 +27,7 @@ final class PlayerViewModel: NSObject, ObservableObject {
 
     func loadVideo(playerItem: AVPlayerItem) {
         let startTime = CFAbsoluteTimeGetCurrent()
-        logger.debug("🎬 Starting video load: \(CFAbsoluteTimeGetCurrent())")
+        self.logger.debug("🎬 Starting video load: \(CFAbsoluteTimeGetCurrent())")
 
         playerItem.preferredForwardBufferDuration = 10
         playerItem.automaticallyPreservesTimeOffsetFromLive = false
@@ -55,7 +55,7 @@ final class PlayerViewModel: NSObject, ObservableObject {
             Task { @MainActor in
                 if item.isPlaybackLikelyToKeepUp {
                     let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-                    logger.debug("📺 Video playback ready: \(elapsed) seconds")
+                    self?.logger.debug("📺 Video playback ready: \(elapsed) seconds")
                     self?.handleReadyToPlay()
                 }
             }
@@ -126,7 +126,7 @@ final class PlayerViewModel: NSObject, ObservableObject {
     }
 
     private func handlePlaybackError() {
-        logger.error("❌ Playback failed")
+        self.logger.error("❌ Playback failed")
     }
 
     @available(iOS 16.0, *)
@@ -142,7 +142,7 @@ final class PlayerViewModel: NSObject, ObservableObject {
                     }
                 }
             } catch {
-                logger.error("❌ Failed to load asset: \(error.localizedDescription)")
+                self.logger.error("❌ Failed to load asset: \(error.localizedDescription)")
             }
         }
     }
