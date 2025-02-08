@@ -7,11 +7,13 @@ struct VideoManagementView: View {
     @State private var showingDeleteConfirmation = false
     @State private var showingCaptionEditor = false
     @State private var editedCaption: String
+    @State private var currentPrivacyLevel: Video.PrivacyLevel
 
     init(video: Video, viewModel: VideoManagementViewModel? = nil) {
         self.video = video
         self._viewModel = StateObject(wrappedValue: viewModel ?? VideoManagementViewModel())
         self._editedCaption = State(initialValue: video.caption)
+        self._currentPrivacyLevel = State(initialValue: video.privacyLevel)
     }
 
     var body: some View {
@@ -36,9 +38,14 @@ struct VideoManagementView: View {
 
             // Privacy settings
             Section("Privacy") {
-                Picker("Privacy", selection: privacyBinding) {
+                Picker("Privacy", selection: $currentPrivacyLevel) {
                     ForEach(Video.PrivacyLevel.allCases, id: \.self) { level in
                         Text(level.displayName).tag(level)
+                    }
+                }
+                .onChange(of: currentPrivacyLevel) { _, newValue in
+                    Task {
+                        await viewModel.updatePrivacy(video, to: newValue)
                     }
                 }
             }
@@ -89,17 +96,6 @@ struct VideoManagementView: View {
                     .background(.ultraThinMaterial)
             }
         }
-    }
-
-    private var privacyBinding: Binding<Video.PrivacyLevel> {
-        Binding(
-            get: { video.privacyLevel },
-            set: { newValue in
-                Task {
-                    await viewModel.updatePrivacy(video, to: newValue)
-                }
-            }
-        )
     }
 }
 

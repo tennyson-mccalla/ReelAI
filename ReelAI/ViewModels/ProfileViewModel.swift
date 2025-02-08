@@ -3,6 +3,7 @@ import FirebaseFirestore
 import FirebaseAuth
 import FirebaseDatabase
 import FirebaseStorage
+import os
 
 @MainActor
 class ProfileViewModel: ObservableObject {
@@ -110,12 +111,11 @@ class ProfileViewModel: ObservableObject {
         logger.info("🎬 Starting to load videos")
 
         do {
-            if let cached = cachedVideos {
-                videos = cached
-                logger.debug("📼 Using cached videos")
-                isLoading = false
-                return
-            }
+            // Clear cached data
+            cachedVideos = nil
+
+            // Disable persistence for this query
+            db.child("videos").keepSynced(false)
 
             let snapshot = try await db.child("videos")
                 .queryOrdered(byChild: "timestamp")
@@ -123,12 +123,26 @@ class ProfileViewModel: ObservableObject {
                 .getData()
 
             print("📄 Got \(snapshot.childrenCount) videos from database")
+
+            // Log raw data for debugging
+            if let rawData = snapshot.value as? [String: [String: Any]] {
+                for (id, data) in rawData {
+                    logger.debug("🔍 Raw video data - ID: \(id), isDeleted: \(data["isDeleted"] as? Bool ?? false)")
+                }
+            }
+
             let loadedVideos = try await loadVideosFromSnapshot(snapshot, userId: userId)
-            
+
             await MainActor.run {
                 self.videos = loadedVideos.sorted { $0.createdAt > $1.createdAt }
                 self.cachedVideos = loadedVideos.sorted { $0.createdAt > $1.createdAt }
                 logger.info("📄 Got \(loadedVideos.count) videos from database")
+                logger.debug("""
+📼 Loaded videos:
+\(self.videos.map { video in
+    "id: \(video.id.prefix(6)), privacy: \(video.privacyLevel), deleted: \(video.isDeleted), caption: \(video.caption.prefix(20))..."
+}.joined(separator: "\n"))
+""")
                 isLoading = false
                 hasLoadedVideos = true
             }
@@ -142,13 +156,15 @@ class ProfileViewModel: ObservableObject {
     }
 
     func forceRefreshVideos() async {
+        logger.debug("🔄 Force refreshing videos")
         hasLoadedVideos = false
+        cachedVideos = nil
         await loadVideos()
     }
 
     private func loadVideosFromSnapshot(_ snapshot: DataSnapshot, userId: String) async throws -> [Video] {
         var loadedVideos: [Video] = []
-        
+
         for child in snapshot.children {
             guard let snapshot = child as? DataSnapshot,
                   let data = snapshot.value as? [String: Any],
@@ -176,15 +192,25 @@ class ProfileViewModel: ObservableObject {
                     createdAt: Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000.0),
                     caption: data["caption"] as? String ?? "",
                     likes: data["likes"] as? Int ?? 0,
-                    comments: data["comments"] as? Int ?? 0
+                    comments: data["comments"] as? Int ?? 0,
+                    isDeleted: data["isDeleted"] as? Bool ?? false,
+                    privacyLevel: Video.PrivacyLevel(rawValue: data["privacyLevel"] as? String ?? "public") ?? .public
                 )
                 loadedVideos.append(video)
+
+                logger.debug("""
+📼 Video loaded:
+ID: \(snapshot.key)
+Deleted: \(data["isDeleted"] as? Bool ?? false)
+Privacy: \(data["privacyLevel"] as? String ?? "public")
+Caption: \(data["caption"] as? String ?? "")
+""")
             } catch {
                 print("❌ Failed to load video: \(videoName)")
                 continue
             }
         }
-        
+
         return loadedVideos
     }
 
@@ -263,25 +289,52 @@ class ProfileViewModel: ObservableObject {
     }
 
     func softDelete(_ video: Video) async {
+        logger.debug("🔴 ProfileViewModel: Starting soft delete for video \(video.id)")
         isLoading = true
         do {
+            // Optimistically update UI
+            await MainActor.run {
+                if let index = videos.firstIndex(where: { $0.id == video.id }) {
+                    var updatedVideo = video
+                    updatedVideo.isDeleted = true
+                    videos[index] = updatedVideo
+                }
+            }
+            
+            // Then update database
             try await databaseManager.softDeleteVideo(video.id)
-            await loadVideos() // Refresh the list
+            // Still refresh to ensure consistency
+            await forceRefreshVideos()
         } catch {
+            // Revert on error
+            await forceRefreshVideos()
+            logger.error("❌ ProfileViewModel: Failed to delete: \(error.localizedDescription)")
             self.error = error
         }
         isLoading = false
     }
-    
+
     func restore(_ video: Video) async {
         isLoading = true
         do {
+            // Optimistically update UI
+            await MainActor.run {
+                if let index = videos.firstIndex(where: { $0.id == video.id }) {
+                    var updatedVideo = video
+                    updatedVideo.isDeleted = false
+                    videos[index] = updatedVideo
+                }
+            }
+            
+            // Then update database
             try await databaseManager.restoreVideo(video.id)
-            await loadVideos() // Refresh the list
+            // Still refresh to ensure consistency
+            await forceRefreshVideos()
         } catch {
+            // Revert on error
+            await forceRefreshVideos()
             self.error = error
         }
         isLoading = false
     }
 }
-

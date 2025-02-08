@@ -7,24 +7,35 @@
 
 import SwiftUI
 import FirebaseCore
+import FirebaseDatabase
+import os
 
 class AppDelegate: NSObject, UIApplicationDelegate {
-  func application(_ application: UIApplication,
-                   didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-    print("AppDelegate: Configuring Firebase") // Debug print
-    FirebaseApp.configure()
-    print("AppDelegate: Firebase configured") // Debug print
-    return true
-  }
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "AppDelegate")
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        logger.debug("🔧 Configuring Firebase")
+        FirebaseApp.configure()
+
+        // Disable persistence completely
+        Database.database().isPersistenceEnabled = false
+
+        logger.debug("✅ Firebase configured with persistence disabled")
+        return true
+    }
 }
 
 @main
 struct ReelAIApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var authViewModel = AuthViewModel()
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ReelAIApp")
 
     init() {
-        print("ReelAIApp: Initializing")
+        logger.debug("🚀 Initializing app")
         // Configure tab bar appearance
         let appearance = UITabBarAppearance()
         appearance.configureWithDefaultBackground()
@@ -87,8 +98,8 @@ struct ReelAIApp: App {
                     }
                 }
                 .onAppear {
-                    print("ReelAIApp: Building view hierarchy")
-                    print("Auth state: \(authViewModel.isAuthenticated)")
+                    logger.debug("📱 Building view hierarchy")
+                    logger.debug("🔑 Auth state: \(authViewModel.isAuthenticated)")
                 }
             }
             .environmentObject(authViewModel)
