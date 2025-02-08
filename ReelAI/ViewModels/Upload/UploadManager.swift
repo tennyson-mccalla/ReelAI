@@ -4,6 +4,10 @@
 import FirebaseStorage
 import FirebaseDatabase
 
+extension Notification.Name {
+    static let uploadProgressUpdated = Notification.Name("uploadProgressUpdated")
+}
+
 final class UploadManager {
     private let storage: StorageReference
     private let database: DatabaseReference
@@ -37,6 +41,16 @@ final class UploadManager {
                     } catch {
                         continuation.resume(throwing: error)
                     }
+                }
+            }
+
+            uploadTask.observe(.progress) { snapshot in
+                if let progress = snapshot.progress {
+                    NotificationCenter.default.post(
+                        name: .uploadProgressUpdated,
+                        object: nil,
+                        userInfo: ["progress": progress.fractionCompleted]
+                    )
                 }
             }
 

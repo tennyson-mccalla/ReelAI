@@ -147,8 +147,6 @@ private extension ProfileView {
         private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfileGridItem")
 
         var body: some View {
-            _ = video.isDeleted ? logger.debug("🎭 Showing deleted overlay for video: \(video.id)") : nil
-
             VideoThumbnailView(video: video)
                 .aspectRatio(9/16, contentMode: .fill)
                 .clipped()
@@ -168,8 +166,6 @@ private extension ProfileView {
                     }
                 }
                 .contextMenu {
-                    _ = logger.debug("📋 Context menu for video: \(video.id), isDeleted: \(video.isDeleted)")
-
                     Button {
                         logger.debug("🎬 Selected video for edit: \(video.id)")
                         selectedVideoForEdit = video
@@ -194,6 +190,11 @@ private extension ProfileView {
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
+                    }
+                }
+                .onAppear {
+                    if video.isDeleted {
+                        logger.debug("🎭 Showing deleted overlay for video: \(video.id)")
                     }
                 }
         }

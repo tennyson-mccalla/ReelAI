@@ -28,6 +28,22 @@ final class VideoUploadViewModel: ObservableObject {
         self.processor = processor
         self.uploadManager = uploadManager
         self.progressTracker = progressTracker
+        
+        // Observe upload progress
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleProgressUpdate),
+            name: .uploadProgressUpdated,
+            object: nil
+        )
+    }
+
+    @objc private func handleProgressUpdate(_ notification: Notification) {
+        if let progress = notification.userInfo?["progress"] as? Double {
+            DispatchQueue.main.async {
+                self.uploadProgress = progress
+            }
+        }
     }
 
     func uploadVideo() {
@@ -62,21 +78,34 @@ final class VideoUploadViewModel: ObservableObject {
         let compressedVideoURL = try await processor.compressVideo(at: videoURL, quality: selectedQuality)
         defer { try? FileManager.default.removeItem(at: compressedVideoURL) }
 
-        // 2. Generate metadata
+        // 2. Generate thumbnail and metadata
         let baseVideoName = UUID().uuidString
         let videoName = baseVideoName + ".mp4"
+        let thumbnailName = baseVideoName + ".jpg"
         print("📱 Starting video upload: \(videoName)")
 
         guard let userId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "UploadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
         }
 
+        // Generate and upload thumbnail
+        guard let thumbnail = thumbnailImage,
+              let thumbnailData = thumbnail.jpegData(compressionQuality: 0.8) else {
+            throw NSError(domain: "UploadError", code: -2, userInfo: [NSLocalizedDescriptionKey: "Could not prepare thumbnail"])
+        }
+
+        let thumbnailRef = Storage.storage().reference().child("thumbnails/\(thumbnailName)")
+        let thumbnailMetadata = StorageMetadata()
+        thumbnailMetadata.contentType = "image/jpeg"
+        _ = try await thumbnailRef.putDataAsync(thumbnailData, metadata: thumbnailMetadata)
+        let thumbnailURL = try await thumbnailRef.downloadURL()
+
         let metadata = VideoMetadata(
             userId: userId,
             videoName: videoName,
             caption: caption,
             timestamp: Date(),
-            thumbnailURL: nil
+            thumbnailURL: thumbnailURL.absoluteString
         )
 
         // 3. Upload video
@@ -117,11 +146,15 @@ final class VideoUploadViewModel: ObservableObject {
     }
 
     func setSelectedVideo(url: URL) {
+        print("📱 ViewModel: Setting selected video URL: \(url.path)")
         selectedVideoURL = url
         Task {
             do {
+                print("📱 ViewModel: Generating thumbnail...")
                 thumbnailImage = try await processor.generateThumbnail(from: url)
+                print("📱 ViewModel: Thumbnail generated successfully")
             } catch {
+                print("❌ ViewModel: Thumbnail generation failed: \(error.localizedDescription)")
                 setError("Could not generate thumbnail: \(error.localizedDescription)")
             }
         }
