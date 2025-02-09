@@ -1,8 +1,12 @@
 import SwiftUI
+import AVKit
+import UIKit
 
+@MainActor
 struct VideoFeedView: View {
     @StateObject private var viewModel: VideoFeedViewModel
-    @State private var lastVideoId: String?
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging: Bool = false
     @Environment(\.scenePhase) private var scenePhase
 
     init(viewModel: VideoFeedViewModel? = nil) {
@@ -10,124 +14,204 @@ struct VideoFeedView: View {
         _viewModel = StateObject(wrappedValue: vm)
     }
 
-    private func debugPrint(_ message: String) {
-        print(message)
-    }
-
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-
-            if viewModel.isLoading && viewModel.videos.isEmpty {
-                VStack(spacing: 0) {
-                    ForEach(0..<3) { _ in
-                        ShimmerView()
-                            .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
-                    }
+        GeometryReader { _ in
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                if viewModel.isLoading && viewModel.videos.isEmpty {
+                    loadingView
+                } else if !viewModel.videos.isEmpty {
+                    videoFeedContent(in: GeometryProxy())
+                } else if let error = viewModel.error {
+                    errorView(error)
                 }
-            } else {
-                SnapScrollView(currentIndex: .init(get: {
-                    viewModel.videos.firstIndex(where: { $0.id == viewModel.currentlyPlayingId }) ?? 0
-                }, set: { newIndex in
-                    Task { @MainActor in
-                        viewModel.currentlyPlayingId = viewModel.videos[newIndex].id
-                    }
-                })) {
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                Task { @MainActor in
+                    await handleScenePhaseChange(newPhase)
+                }
+            }
+            .task {
+                if viewModel.videos.isEmpty {
+                    await viewModel.loadVideos()
+                }
+            }
+            .navigationBarHidden(true)
+        }
+    }
+    
+    @ViewBuilder
+    private func videoFeedContent(in geometry: GeometryProxy) -> some View {
+        GeometryReader { _ in
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(spacing: 0) {
                         ForEach(viewModel.videos) { video in
-                            VideoPlayerView(
-                                videoURL: video.videoURL,
-                                videoId: video.id,
-                                feedViewModel: viewModel
-                            )
-                            .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
+                            videoCell(for: video, in: geometry)
+                                .id(video.id)
                         }
                     }
-                } onSnap: { index in
-                    let video = viewModel.videos[index]
-                    viewModel.preloader.preloadNextVideo(after: video.id, videos: viewModel.videos)
+                }
+                .scrollDisabled(true)
+                .highPriorityGesture(createDragGesture(proxy: proxy))
+                .onAppear {
+                    if viewModel.currentlyPlayingId == nil {
+                        viewModel.currentlyPlayingId = viewModel.videos.first?.id
+                    }
                 }
             }
         }
-        .edgesIgnoringSafeArea(.all)
-        .onAppear {
-            viewModel.loadVideos()
+    }
+    
+    private func videoCell(for video: Video, in geometry: GeometryProxy) -> some View {
+        let isCurrentVideo = viewModel.currentlyPlayingId == video.id
+        return VideoPlayerView(
+            videoURL: video.videoURL,
+            videoId: video.id,
+            feedViewModel: viewModel,
+            isPlaying: isCurrentVideo
+        )
+        .frame(width: geometry.size.width, height: geometry.size.height)
+        .offset(y: calculateOffset(for: video, dragOffset: dragOffset, in: geometry))
+        .opacity(isCurrentVideo ? 1 : 0)
+    }
+    
+    private func createDragGesture(proxy: ScrollViewProxy) -> some Gesture {
+        DragGesture(minimumDistance: 10)
+            .onChanged { value in
+                handleDragChange(value)
+            }
+            .onEnded { value in
+                handleDragEnd(value, proxy: proxy)
+            }
+    }
+    
+    private func handleDragChange(_ value: DragGesture.Value) {
+        guard let currentIndex = viewModel.videos.firstIndex(where: { $0.id == viewModel.currentlyPlayingId }) else {
+            return
         }
-        .onDisappear {
-            viewModel.cleanup()
+        
+        isDragging = true
+        let translation = value.translation.height
+        let screenHeight = UIScreen.main.bounds.height
+        
+        // Update drag offset with resistance
+        let threshold = screenHeight * 0.3
+        if abs(translation) > threshold {
+            let excess = abs(translation) - threshold
+            let damping = 0.2
+            let dampedExcess = excess * damping
+            dragOffset = (translation < 0 ? -1 : 1) * (threshold + dampedExcess)
+        } else {
+            dragOffset = translation
         }
-        .onChange(of: scenePhase) { _, newPhase in
-            switch newPhase {
-            case .background:
-                viewModel.handleBackground()
-            case .active:
-                viewModel.handleForeground()
-            default:
-                break
+    }
+    
+    private func handleDragEnd(_ value: DragGesture.Value, proxy: ScrollViewProxy) {
+        guard let currentIndex = viewModel.videos.firstIndex(where: { $0.id == viewModel.currentlyPlayingId }) else {
+            return
+        }
+        
+        isDragging = false
+        let translation = value.translation.height
+        let progress = translation / UIScreen.main.bounds.height
+        
+        if abs(progress) >= 0.2 {
+            let nextIndex = progress > 0 ? 
+                max(0, currentIndex - 1) : 
+                min(viewModel.videos.count - 1, currentIndex + 1)
+            
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                dragOffset = 0
+                viewModel.currentlyPlayingId = viewModel.videos[nextIndex].id
+                proxy.scrollTo(viewModel.videos[nextIndex].id, anchor: .center)
+            }
+        } else {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                dragOffset = 0
+                proxy.scrollTo(viewModel.videos[currentIndex].id, anchor: .center)
             }
         }
     }
-
+    
+    private func handleScenePhaseChange(_ newPhase: ScenePhase) async {
+        switch newPhase {
+        case .background:
+            await viewModel.handleBackground()
+        case .active:
+            await viewModel.handleForeground()
+        default:
+            break
+        }
+    }
+    
+    private func calculateOffset(for video: Video, dragOffset: CGFloat, in geometry: GeometryProxy) -> CGFloat {
+        guard let currentIndex = viewModel.videos.firstIndex(where: { $0.id == viewModel.currentlyPlayingId }),
+              let videoIndex = viewModel.videos.firstIndex(where: { $0.id == video.id }) else {
+            return 0
+        }
+        
+        let screenHeight = geometry.size.height
+        let indexDiff = CGFloat(videoIndex - currentIndex)
+        let baseOffset = indexDiff * screenHeight
+        return baseOffset + dragOffset
+    }
+    
+    @ViewBuilder
+    private var loadingView: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                .scaleEffect(1.5)
+            Text("Loading videos...")
+                .foregroundColor(.white)
+        }
+    }
+    
     @ViewBuilder
     private func errorView(_ error: String) -> some View {
-        VStack {
+        VStack(spacing: 16) {
             Text(error)
                 .foregroundColor(.white)
-                .padding()
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(10)
-
             Button("Retry") {
-                viewModel.reset()
+                Task {
+                    await viewModel.loadVideos()
+                }
             }
             .foregroundColor(.white)
             .padding()
+            .background(Color.gray.opacity(0.3))
+            .cornerRadius(8)
         }
     }
 }
 
 // MARK: - Previews
-#Preview("Default") {
-    VideoFeedView()
-}
-
-#Preview("Loading") {
-    VideoFeedView(viewModel: {
-        let vm = VideoFeedViewModel()
-        vm.setLoading(true)
-        return vm
-    }())
-}
-
-#Preview("Error") {
-    VideoFeedView(viewModel: {
-        let vm = VideoFeedViewModel()
-        vm.setError("Network connection unavailable")
-        return vm
-    }())
-}
-
-// MARK: - Preview Helpers
 #if DEBUG
-extension VideoFeedViewModel {
-    static var mock: VideoFeedViewModel {
-        let model = VideoFeedViewModel()
-        if let url = URL(string: "https://example.com/1.mp4"),
-           let thumbUrl = URL(string: "https://example.com/1.jpg") {
-            model.setVideos([
-                Video(
-                    id: "1",
-                    userId: "user1",
-                    videoURL: url,
-                    thumbnailURL: thumbUrl,
-                    createdAt: Date(),
-                    caption: "Test video",
-                    likes: 0,
-                    comments: 0
-                )
-            ])
-        }
-        return model
+struct VideoFeedView_Previews: PreviewProvider {
+    static var previews: some View {
+        VideoFeedView()
+    }
+}
+
+struct VideoFeedViewLoading_Previews: PreviewProvider {
+    static var previews: some View {
+        VideoFeedView(viewModel: {
+            let vm = VideoFeedViewModel()
+            vm.setLoading(true)
+            return vm
+        }())
+    }
+}
+
+struct VideoFeedViewError_Previews: PreviewProvider {
+    static var previews: some View {
+        VideoFeedView(viewModel: {
+            let vm = VideoFeedViewModel()
+            vm.setError("Network connection unavailable")
+            return vm
+        }())
     }
 }
 #endif
