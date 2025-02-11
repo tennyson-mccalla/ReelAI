@@ -7,65 +7,50 @@ struct VideoUploadView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showingQualityPicker = false
 
-    private var computedThumbnails: [UIImage] {
-        let selectedURLs: [URL] = viewModel.selectedVideoURLs
-        let thumbnailsDict: [URL: UIImage] = viewModel.thumbnails
-        var thumbnails: [UIImage] = []
-        for url in selectedURLs {
-            if let image = thumbnailsDict[url] {
-                thumbnails.append(image)
-            }
-        }
-        return thumbnails
-    }
-
-    private var previewSection: some View {
-        MultiVideoPreviewSection(
-            thumbnails: computedThumbnails,
-            onTap: { showingPhotoPicker = true }
-        )
-    }
-
-    private var uploadStack: some View {
-        VStack(spacing: 20) {
-            previewSection
-            CaptionInputField(
-                caption: $viewModel.caption,
-                isEnabled: !viewModel.isUploading
-            )
-
-            if !viewModel.selectedVideoURLs.isEmpty {
-                Text("Selected Videos: \(viewModel.selectedVideoURLs.count)")
-                    .foregroundColor(.secondary)
-            }
-
-            UploadProgressSection(
-                isUploading: viewModel.isUploading,
-                progress: viewModel.uploadProgress,
-                onCancel: { viewModel.cancelUpload() }
-            )
-            .allowsHitTesting(true)
-
-            UploadButton(
-                isUploading: viewModel.isUploading,
-                hasVideo: !viewModel.selectedVideoURLs.isEmpty,
-                action: viewModel.uploadVideos
-            )
-
-            if let error = viewModel.errorMessage {
-                Text(error)
-                    .foregroundColor(error.hasPrefix("✅") ? .green : .red)
-                    .padding()
-            }
-
-            Spacer()
-        }
-    }
-
     var body: some View {
         NavigationView {
-            ZStack {
-                uploadStack
+            ScrollView {
+                VStack(spacing: 20) {
+                    if viewModel.selectedVideoURLs.isEmpty {
+                        VideoPlaceholderView()
+                            .onTapGesture { showingPhotoPicker = true }
+                    } else {
+                        VStack(spacing: 15) {
+                            ForEach(viewModel.selectedVideoURLs, id: \.self) { url in
+                                VideoUploadItemView(
+                                    url: url,
+                                    thumbnail: viewModel.thumbnails[url],
+                                    caption: Binding(
+                                        get: { viewModel.captions[url] ?? "" },
+                                        set: { viewModel.captions[url] = $0 }
+                                    ),
+                                    uploadStatus: viewModel.uploadStatuses[url] ?? .pending,
+                                    onCancel: {
+                                        viewModel.cancelUpload(for: url)
+                                    }
+                                )
+                            }
+                        }
+
+                        Text("Selected Videos: \(viewModel.selectedVideoURLs.count)")
+                            .foregroundColor(.secondary)
+                            .padding(.top, 5)
+                    }
+
+                    UploadButton(
+                        isUploading: viewModel.isUploading,
+                        hasVideo: !viewModel.selectedVideoURLs.isEmpty,
+                        action: viewModel.uploadVideos
+                    )
+                    .padding(.horizontal)
+
+                    if let error = viewModel.errorMessage {
+                        Text(error)
+                            .foregroundColor(error.hasPrefix("✅") ? .green : .red)
+                            .padding()
+                    }
+                }
+                .padding(.vertical)
             }
             .navigationTitle("Upload Videos")
             .navigationDestination(isPresented: $viewModel.shouldNavigateToProfile) {
@@ -75,69 +60,78 @@ struct VideoUploadView: View {
                 VideoPicker(selectedVideoURLs: $viewModel.selectedVideoURLs, viewModel: viewModel)
             }
             .disabled(viewModel.isUploading && !viewModel.shouldNavigateToProfile)
-
-            // Overlay cancel button when uploading
-            if viewModel.isUploading {
-                VStack {
-                    Spacer()
-                    Button(action: {
-                        print("📱 Cancel button tapped in UI")
-                        viewModel.cancelUpload()
-                    }) {
-                        Text("Cancel Upload")
-                            .foregroundColor(.white)
-                            .padding(8)
-                            .background(Color.red.opacity(0.8))
-                            .cornerRadius(8)
-                    }
-                    .padding(.bottom, 40)
-                }
-                .onAppear {
-                    print("📱 Cancel overlay appeared")
-                }
-            }
         }
         .onChange(of: viewModel.shouldNavigateToProfile) { _, shouldNavigate in
             if shouldNavigate {
                 dismiss()
             }
         }
-        .onChange(of: viewModel.selectedVideoURLs) { _, newValue in
-            if !newValue.isEmpty {
-                showingQualityPicker = true
+    }
+}
+
+struct VideoUploadItemView: View {
+    let url: URL
+    let thumbnail: UIImage?
+    @Binding var caption: String
+    let uploadStatus: UploadStatus
+    let onCancel: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            if let thumbnail = thumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 120, height: 120)
+                    .cornerRadius(8)
             }
+
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("Add caption for this video...", text: $caption)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+
+                switch uploadStatus {
+                case .pending:
+                    Text("Pending")
+                        .foregroundColor(.secondary)
+                case .uploading(let progress):
+                    VStack(alignment: .leading, spacing: 4) {
+                        ProgressView(value: progress) {
+                            HStack {
+                                Text("Uploading... \(Int(progress * 100))%")
+                                Spacer()
+                                Button(action: onCancel) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.red)
+                                }
+                            }
+                        }
+                    }
+                case .completed(let url):
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Uploaded")
+                            .foregroundColor(.green)
+                    }
+                case .failed(let error):
+                    HStack {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundColor(.red)
+                        Text(error.localizedDescription)
+                            .foregroundColor(.red)
+                            .lineLimit(2)
+                    }
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal)
     }
 }
 
 // MARK: - Subviews
-
-struct MultiVideoPreviewSection: View {
-    let thumbnails: [UIImage]
-    let onTap: () -> Void
-
-    var body: some View {
-        Group {
-            if !thumbnails.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(thumbnails, id: \.self) { thumbnail in
-                            Image(uiImage: thumbnail)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(height: 150)
-                                .cornerRadius(12)
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-            } else {
-                VideoPlaceholderView()
-                    .onTapGesture(perform: onTap)
-            }
-        }
-    }
-}
 
 struct CaptionInputField: View {
     @Binding var caption: String
@@ -179,7 +173,7 @@ struct UploadButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text("Upload Video")
+            Text("Upload")
                 .font(.headline)
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
