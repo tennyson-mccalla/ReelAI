@@ -7,6 +7,7 @@ final class FirebaseStorageManager: StorageManager {
     private let storage = Storage.storage().reference()
     private let maxRetries = 3
     private let baseRetryDelay: TimeInterval = 1.0
+    private var uploadTasks: [URL: StorageUploadTask] = [:]
 
     enum StorageError: Error, LocalizedError {
         case notAuthenticated
@@ -134,40 +135,46 @@ final class FirebaseStorageManager: StorageManager {
         }
     }
 
-    func uploadVideo(_ url: URL, name: String) async throws -> URL {
+    func uploadVideo(_ url: URL, name: String, progressHandler: @escaping (Double) -> Void) async throws -> URL {
         let videoRef = storage.child("videos/\(name)")
         let metadata = StorageMetadata()
         metadata.contentType = "video/mp4"
 
-        var lastError: Error?
-        for attempt in 0..<maxRetries {
-            do {
-                print("📤 Video upload attempt \(attempt + 1): \(name)")
-                _ = try await videoRef.putFileAsync(from: url, metadata: metadata)
-                let downloadURL = try await videoRef.downloadURL()
+        return try await withCheckedThrowingContinuation { continuation in
+            let uploadTask = videoRef.putFile(from: url, metadata: metadata)
 
-                print("✅ Video upload successful: \(downloadURL)")
-                return downloadURL
-            } catch {
-                lastError = error
-
-                if !shouldRetry(error: error) {
-                    break
+            uploadTask.observe(.progress) { snapshot in
+                if let progress = snapshot.progress {
+                    let percentComplete = Double(progress.completedUnitCount) / Double(progress.totalUnitCount)
+                    progressHandler(percentComplete)
                 }
-
-                print("⏳ Retrying video upload in \(exponentialBackoff(attempt: attempt)) seconds")
-                try? await Task.sleep(nanoseconds: UInt64(exponentialBackoff(attempt: attempt) * 1_000_000_000))
             }
-        }
 
-        // Log final error details
-        if let error = lastError {
-            print("❌ Video upload failed after \(maxRetries) attempts")
-            print("- Error type: \(type(of: error))")
-            print("- Error description: \(error.localizedDescription)")
-        }
+            uploadTask.observe(.success) { _ in
+                Task {
+                    do {
+                        let downloadURL = try await videoRef.downloadURL()
+                        continuation.resume(returning: downloadURL)
+                    } catch {
+                        continuation.resume(throwing: StorageError.uploadFailed(error))
+                    }
+                }
+            }
 
-        throw lastError ?? StorageError.uploadFailed(StorageError.networkError)
+            uploadTask.observe(.failure) { snapshot in
+                if let error = snapshot.error as? NSError {
+                    continuation.resume(throwing: StorageError.uploadFailed(error))
+                }
+            }
+
+            // Store the upload task for potential cancellation
+            uploadTasks[url] = uploadTask
+        }
+    }
+
+    func cancelUpload(for url: URL) {
+        uploadTasks[url]?.cancel()
+        uploadTasks.removeValue(forKey: url)
     }
 
     func uploadThumbnail(_ data: Data, for videoId: String) async throws -> URL {
