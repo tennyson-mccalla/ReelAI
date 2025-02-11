@@ -76,23 +76,39 @@ struct VideoUploadItemView: View {
     let uploadStatus: UploadStatus
     let onCancel: () -> Void
 
+    // Constants for thumbnail dimensions
+    private let thumbnailWidth: CGFloat = 100
+    private let thumbnailHeight: CGFloat = 160
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            if let thumbnail = thumbnail {
-                Image(uiImage: thumbnail)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 120, height: 120)
-                    .cornerRadius(8)
+            Group {
+                if let thumbnail = thumbnail {
+                    Image(uiImage: thumbnail)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: thumbnailWidth, height: thumbnailHeight)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: thumbnailWidth, height: thumbnailHeight)
+                        .overlay(
+                            Image(systemName: "photo")
+                                .foregroundColor(.gray)
+                        )
+                }
             }
+            .shadow(radius: 2)
 
             VStack(alignment: .leading, spacing: 8) {
                 TextField("Add caption for this video...", text: $caption)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .frame(maxWidth: .infinity)
 
                 switch uploadStatus {
                 case .pending:
-                    Text("Pending")
+                    Text("Ready to upload")
                         .foregroundColor(.secondary)
                 case .uploading(let progress):
                     VStack(alignment: .leading, spacing: 4) {
@@ -107,27 +123,26 @@ struct VideoUploadItemView: View {
                             }
                         }
                     }
-                case .completed(let url):
+                case .completed(let _):
                     HStack {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
                         Text("Uploaded")
-                            .foregroundColor(.green)
                     }
+                    .foregroundColor(.green)
                 case .failed(let error):
                     HStack {
                         Image(systemName: "exclamationmark.circle.fill")
-                            .foregroundColor(.red)
                         Text(error.localizedDescription)
-                            .foregroundColor(.red)
                             .lineLimit(2)
                     }
+                    .foregroundColor(.red)
                 }
             }
-            .frame(maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal)
+        .padding(.vertical, 8)
     }
 }
 
