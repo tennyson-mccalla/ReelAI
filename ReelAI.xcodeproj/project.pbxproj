@@ -7,105 +7,53 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		4C66FF5E2D5168160095FCBE /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 4C66FF5D2D5168160095FCBE /* FirebaseAuth */; };
-		4C66FF602D5168160095FCBE /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 4C66FF5F2D5168160095FCBE /* FirebaseFirestore */; };
-		4C66FF622D5168160095FCBE /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 4C66FF612D5168160095FCBE /* FirebaseStorage */; };
-		4C66FF662D516BE30095FCBE /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 4C66FF652D516BE30095FCBE /* FirebaseAnalytics */; };
-		4C66FF682D516BE30095FCBE /* FirebaseAnalyticsWithoutAdIdSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 4C66FF672D516BE30095FCBE /* FirebaseAnalyticsWithoutAdIdSupport */; };
-		4C7611412D540A2800D24827 /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = 4C7611402D540A2800D24827 /* FirebaseDatabase */; };
-		4CDCA7FA2D56BE1D0009BFBC /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4CDCA7F92D56BE1D0009BFBC /* GoogleService-Info.plist */; };
+		4CBA33B32D5BADD000A09F5E /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 4CBA33B22D5BADD000A09F5E /* FirebaseAuth */; };
+		4CBA33B52D5BADD000A09F5E /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4CBA33B42D5BADD000A09F5E /* FirebaseCore */; };
+		4CBA33B72D5BADD000A09F5E /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = 4CBA33B62D5BADD000A09F5E /* FirebaseDatabase */; };
+		4CBA33B92D5BADD000A09F5E /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 4CBA33B82D5BADD000A09F5E /* FirebaseFirestore */; };
+		4CBA33BB2D5BADD000A09F5E /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 4CBA33BA2D5BADD000A09F5E /* FirebaseStorage */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-		4C8773612D514B21009D99EE /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 4C8773482D514B1F009D99EE /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 4C87734F2D514B1F009D99EE;
-			remoteInfo = ReelAI;
-		};
-		4C87736B2D514B21009D99EE /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 4C8773482D514B1F009D99EE /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 4C87734F2D514B1F009D99EE;
-			remoteInfo = ReelAI;
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXFileReference section */
-		4C8773502D514B1F009D99EE /* ReelAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ReelAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		4C8773602D514B21009D99EE /* ReelAITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ReelAITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		4C87736A2D514B21009D99EE /* ReelAIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ReelAIUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		4CDCA7F92D56BE1D0009BFBC /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		4C4106842D5BA8C1006DC947 /* reelAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = reelAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		4C8773522D514B1F009D99EE /* ReelAI */ = {
+		4C4106862D5BA8C1006DC947 /* reelAI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = ReelAI;
-			sourceTree = "<group>";
-		};
-		4C8773632D514B21009D99EE /* ReelAITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = ReelAITests;
-			sourceTree = "<group>";
-		};
-		4C87736D2D514B21009D99EE /* ReelAIUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = ReelAIUITests;
+			path = reelAI;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		4C87734D2D514B1F009D99EE /* Frameworks */ = {
+		4C4106812D5BA8C1006DC947 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4C7611412D540A2800D24827 /* FirebaseDatabase in Frameworks */,
-				4C66FF5E2D5168160095FCBE /* FirebaseAuth in Frameworks */,
-				4C66FF682D516BE30095FCBE /* FirebaseAnalyticsWithoutAdIdSupport in Frameworks */,
-				4C66FF602D5168160095FCBE /* FirebaseFirestore in Frameworks */,
-				4C66FF662D516BE30095FCBE /* FirebaseAnalytics in Frameworks */,
-				4C66FF622D5168160095FCBE /* FirebaseStorage in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		4C87735D2D514B21009D99EE /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		4C8773672D514B21009D99EE /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
+				4CBA33B72D5BADD000A09F5E /* FirebaseDatabase in Frameworks */,
+				4CBA33B92D5BADD000A09F5E /* FirebaseFirestore in Frameworks */,
+				4CBA33B52D5BADD000A09F5E /* FirebaseCore in Frameworks */,
+				4CBA33BB2D5BADD000A09F5E /* FirebaseStorage in Frameworks */,
+				4CBA33B32D5BADD000A09F5E /* FirebaseAuth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		4C8773472D514B1F009D99EE = {
+		4C41067B2D5BA8C1006DC947 = {
 			isa = PBXGroup;
 			children = (
-				4CDCA7F92D56BE1D0009BFBC /* GoogleService-Info.plist */,
-				4C8773522D514B1F009D99EE /* ReelAI */,
-				4C8773632D514B21009D99EE /* ReelAITests */,
-				4C87736D2D514B21009D99EE /* ReelAIUITests */,
-				4C8773512D514B1F009D99EE /* Products */,
+				4C4106862D5BA8C1006DC947 /* reelAI */,
+				4C4106852D5BA8C1006DC947 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		4C8773512D514B1F009D99EE /* Products */ = {
+		4C4106852D5BA8C1006DC947 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				4C8773502D514B1F009D99EE /* ReelAI.app */,
-				4C8773602D514B21009D99EE /* ReelAITests.xctest */,
-				4C87736A2D514B21009D99EE /* ReelAIUITests.xctest */,
+				4C4106842D5BA8C1006DC947 /* reelAI.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -113,144 +61,72 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		4C87734F2D514B1F009D99EE /* ReelAI */ = {
+		4C4106832D5BA8C1006DC947 /* reelAI */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 4C8773742D514B21009D99EE /* Build configuration list for PBXNativeTarget "ReelAI" */;
+			buildConfigurationList = 4C4106922D5BA8C2006DC947 /* Build configuration list for PBXNativeTarget "reelAI" */;
 			buildPhases = (
-				4C87734C2D514B1F009D99EE /* Sources */,
-				4C87734D2D514B1F009D99EE /* Frameworks */,
-				4C87734E2D514B1F009D99EE /* Resources */,
+				4C4106802D5BA8C1006DC947 /* Sources */,
+				4C4106812D5BA8C1006DC947 /* Frameworks */,
+				4C4106822D5BA8C1006DC947 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				4C8773522D514B1F009D99EE /* ReelAI */,
+				4C4106862D5BA8C1006DC947 /* reelAI */,
 			);
-			name = ReelAI;
+			name = reelAI;
 			packageProductDependencies = (
-				4C66FF5D2D5168160095FCBE /* FirebaseAuth */,
-				4C66FF5F2D5168160095FCBE /* FirebaseFirestore */,
-				4C66FF612D5168160095FCBE /* FirebaseStorage */,
-				4C66FF652D516BE30095FCBE /* FirebaseAnalytics */,
-				4C66FF672D516BE30095FCBE /* FirebaseAnalyticsWithoutAdIdSupport */,
-				4C7611402D540A2800D24827 /* FirebaseDatabase */,
+				4CBA33B22D5BADD000A09F5E /* FirebaseAuth */,
+				4CBA33B42D5BADD000A09F5E /* FirebaseCore */,
+				4CBA33B62D5BADD000A09F5E /* FirebaseDatabase */,
+				4CBA33B82D5BADD000A09F5E /* FirebaseFirestore */,
+				4CBA33BA2D5BADD000A09F5E /* FirebaseStorage */,
 			);
-			productName = ReelAI;
-			productReference = 4C8773502D514B1F009D99EE /* ReelAI.app */;
+			productName = reelAI;
+			productReference = 4C4106842D5BA8C1006DC947 /* reelAI.app */;
 			productType = "com.apple.product-type.application";
-		};
-		4C87735F2D514B21009D99EE /* ReelAITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 4C8773772D514B21009D99EE /* Build configuration list for PBXNativeTarget "ReelAITests" */;
-			buildPhases = (
-				4C87735C2D514B21009D99EE /* Sources */,
-				4C87735D2D514B21009D99EE /* Frameworks */,
-				4C87735E2D514B21009D99EE /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				4C8773622D514B21009D99EE /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				4C8773632D514B21009D99EE /* ReelAITests */,
-			);
-			name = ReelAITests;
-			packageProductDependencies = (
-			);
-			productName = ReelAITests;
-			productReference = 4C8773602D514B21009D99EE /* ReelAITests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
-		4C8773692D514B21009D99EE /* ReelAIUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 4C87737A2D514B21009D99EE /* Build configuration list for PBXNativeTarget "ReelAIUITests" */;
-			buildPhases = (
-				4C8773662D514B21009D99EE /* Sources */,
-				4C8773672D514B21009D99EE /* Frameworks */,
-				4C8773682D514B21009D99EE /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				4C87736C2D514B21009D99EE /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				4C87736D2D514B21009D99EE /* ReelAIUITests */,
-			);
-			name = ReelAIUITests;
-			packageProductDependencies = (
-			);
-			productName = ReelAIUITests;
-			productReference = 4C87736A2D514B21009D99EE /* ReelAIUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		4C8773482D514B1F009D99EE /* Project object */ = {
+		4C41067C2D5BA8C1006DC947 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1620;
 				LastUpgradeCheck = 1620;
 				TargetAttributes = {
-					4C87734F2D514B1F009D99EE = {
+					4C4106832D5BA8C1006DC947 = {
 						CreatedOnToolsVersion = 16.2;
-					};
-					4C87735F2D514B21009D99EE = {
-						CreatedOnToolsVersion = 16.2;
-						TestTargetID = 4C87734F2D514B1F009D99EE;
-					};
-					4C8773692D514B21009D99EE = {
-						CreatedOnToolsVersion = 16.2;
-						TestTargetID = 4C87734F2D514B1F009D99EE;
 					};
 				};
 			};
-			buildConfigurationList = 4C87734B2D514B1F009D99EE /* Build configuration list for PBXProject "ReelAI" */;
+			buildConfigurationList = 4C41067F2D5BA8C1006DC947 /* Build configuration list for PBXProject "reelAI" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 			);
-			mainGroup = 4C8773472D514B1F009D99EE;
+			mainGroup = 4C41067B2D5BA8C1006DC947;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				4C66FF5C2D5168160095FCBE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				4CBA33B12D5BADD000A09F5E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 4C8773512D514B1F009D99EE /* Products */;
+			productRefGroup = 4C4106852D5BA8C1006DC947 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				4C87734F2D514B1F009D99EE /* ReelAI */,
-				4C87735F2D514B21009D99EE /* ReelAITests */,
-				4C8773692D514B21009D99EE /* ReelAIUITests */,
+				4C4106832D5BA8C1006DC947 /* reelAI */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		4C87734E2D514B1F009D99EE /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				4CDCA7FA2D56BE1D0009BFBC /* GoogleService-Info.plist in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		4C87735E2D514B21009D99EE /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		4C8773682D514B21009D99EE /* Resources */ = {
+		4C4106822D5BA8C1006DC947 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -260,21 +136,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		4C87734C2D514B1F009D99EE /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		4C87735C2D514B21009D99EE /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		4C8773662D514B21009D99EE /* Sources */ = {
+		4C4106802D5BA8C1006DC947 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -283,21 +145,8 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		4C8773622D514B21009D99EE /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 4C87734F2D514B1F009D99EE /* ReelAI */;
-			targetProxy = 4C8773612D514B21009D99EE /* PBXContainerItemProxy */;
-		};
-		4C87736C2D514B21009D99EE /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 4C87734F2D514B1F009D99EE /* ReelAI */;
-			targetProxy = 4C87736B2D514B21009D99EE /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin XCBuildConfiguration section */
-		4C8773722D514B21009D99EE /* Debug */ = {
+		4C4106902D5BA8C2006DC947 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -360,7 +209,7 @@
 			};
 			name = Debug;
 		};
-		4C8773732D514B21009D99EE /* Release */ = {
+		4C4106912D5BA8C2006DC947 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -416,15 +265,14 @@
 			};
 			name = Release;
 		};
-		4C8773752D514B21009D99EE /* Debug */ = {
+		4C4106932D5BA8C2006DC947 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"ReelAI/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"reelAI/Preview Content\"";
 				DEVELOPMENT_TEAM = AT2HT9MT4G;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -432,15 +280,14 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ten.reelai;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ten.reelAI;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
@@ -451,15 +298,14 @@
 			};
 			name = Debug;
 		};
-		4C8773762D514B21009D99EE /* Release */ = {
+		4C4106942D5BA8C2006DC947 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"ReelAI/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"reelAI/Preview Content\"";
 				DEVELOPMENT_TEAM = AT2HT9MT4G;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -467,15 +313,14 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ten.reelai;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ten.reelAI;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
@@ -483,112 +328,26 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Release;
-		};
-		4C8773782D514B21009D99EE /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = GauntletAI.ReelAITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ReelAI.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ReelAI";
-			};
-			name = Debug;
-		};
-		4C8773792D514B21009D99EE /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = GauntletAI.ReelAITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ReelAI.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ReelAI";
-			};
-			name = Release;
-		};
-		4C87737B2D514B21009D99EE /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = GauntletAI.ReelAIUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = ReelAI;
-			};
-			name = Debug;
-		};
-		4C87737C2D514B21009D99EE /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = GauntletAI.ReelAIUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = ReelAI;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		4C87734B2D514B1F009D99EE /* Build configuration list for PBXProject "ReelAI" */ = {
+		4C41067F2D5BA8C1006DC947 /* Build configuration list for PBXProject "reelAI" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				4C8773722D514B21009D99EE /* Debug */,
-				4C8773732D514B21009D99EE /* Release */,
+				4C4106902D5BA8C2006DC947 /* Debug */,
+				4C4106912D5BA8C2006DC947 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		4C8773742D514B21009D99EE /* Build configuration list for PBXNativeTarget "ReelAI" */ = {
+		4C4106922D5BA8C2006DC947 /* Build configuration list for PBXNativeTarget "reelAI" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				4C8773752D514B21009D99EE /* Debug */,
-				4C8773762D514B21009D99EE /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		4C8773772D514B21009D99EE /* Build configuration list for PBXNativeTarget "ReelAITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				4C8773782D514B21009D99EE /* Debug */,
-				4C8773792D514B21009D99EE /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		4C87737A2D514B21009D99EE /* Build configuration list for PBXNativeTarget "ReelAIUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				4C87737B2D514B21009D99EE /* Debug */,
-				4C87737C2D514B21009D99EE /* Release */,
+				4C4106932D5BA8C2006DC947 /* Debug */,
+				4C4106942D5BA8C2006DC947 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -596,48 +355,43 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		4C66FF5C2D5168160095FCBE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+		4CBA33B12D5BADD000A09F5E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 11.8.0;
+				minimumVersion = 11.8.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		4C66FF5D2D5168160095FCBE /* FirebaseAuth */ = {
+		4CBA33B22D5BADD000A09F5E /* FirebaseAuth */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 4C66FF5C2D5168160095FCBE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			package = 4CBA33B12D5BADD000A09F5E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAuth;
 		};
-		4C66FF5F2D5168160095FCBE /* FirebaseFirestore */ = {
+		4CBA33B42D5BADD000A09F5E /* FirebaseCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 4C66FF5C2D5168160095FCBE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			package = 4CBA33B12D5BADD000A09F5E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		4CBA33B62D5BADD000A09F5E /* FirebaseDatabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4CBA33B12D5BADD000A09F5E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseDatabase;
+		};
+		4CBA33B82D5BADD000A09F5E /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4CBA33B12D5BADD000A09F5E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseFirestore;
 		};
-		4C66FF612D5168160095FCBE /* FirebaseStorage */ = {
+		4CBA33BA2D5BADD000A09F5E /* FirebaseStorage */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 4C66FF5C2D5168160095FCBE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			package = 4CBA33B12D5BADD000A09F5E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseStorage;
-		};
-		4C66FF652D516BE30095FCBE /* FirebaseAnalytics */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4C66FF5C2D5168160095FCBE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseAnalytics;
-		};
-		4C66FF672D516BE30095FCBE /* FirebaseAnalyticsWithoutAdIdSupport */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4C66FF5C2D5168160095FCBE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseAnalyticsWithoutAdIdSupport;
-		};
-		4C7611402D540A2800D24827 /* FirebaseDatabase */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4C66FF5C2D5168160095FCBE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseDatabase;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = 4C8773482D514B1F009D99EE /* Project object */;
+	rootObject = 4C41067C2D5BA8C1006DC947 /* Project object */;
 }
