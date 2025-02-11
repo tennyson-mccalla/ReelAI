@@ -26,6 +26,7 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
     @Published var uploadStatuses: [URL: UploadStatus] = [:]
     @Published var thumbnails: [URL: UIImage] = [:]
     @Published var networkStatus: NetworkMonitor.NetworkStatus = .unknown
+    @Published var captions: [URL: String] = [:]
 
     // MARK: - Dependencies
     private let networkMonitor = NetworkMonitor.shared
@@ -81,7 +82,15 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
             self.isUploading = true
 
             do {
-                try await self.uploadSelectedVideos()
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    for url in selectedVideoURLs {
+                        group.addTask {
+                            try await self.uploadSingleVideo(url)
+                        }
+                    }
+                    try await group.waitForAll()
+                }
+
                 await MainActor.run {
                     self.uploadComplete = true
                     self.isUploading = false
@@ -93,6 +102,65 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
                 }
             }
         }
+    }
+
+    @MainActor
+    private func uploadSingleVideo(_ url: URL) async throws {
+        uploadStatuses[url] = .uploading(progress: 0)
+
+        do {
+            let processedURL = try await videoProcessor.compressVideo(at: url, quality: mapQuality(selectedQuality))
+            let videoName = "\(UUID().uuidString)".replacingOccurrences(of: "-", with: "")
+
+            // Upload video with progress tracking
+            let downloadURL = try await storageManager.uploadVideo(processedURL, name: videoName) { progress in
+                Task { @MainActor in
+                    self.uploadStatuses[url] = .uploading(progress: progress)
+                }
+            }
+
+            var thumbnailURL: URL?
+            if let thumbnailImage = thumbnails[url],
+               let thumbnailData = thumbnailImage.jpegData(compressionQuality: 0.8) {
+                thumbnailURL = try await storageManager.uploadThumbnail(thumbnailData, for: videoName)
+            }
+
+            let video = Video(
+                id: videoName,
+                userId: Auth.auth().currentUser?.uid,
+                videoURL: downloadURL,
+                thumbnailURL: thumbnailURL,
+                createdAt: Date(),
+                caption: captions[url] ?? "",
+                likes: 0,
+                comments: 0,
+                isDeleted: false,
+                privacyLevel: .public
+            )
+
+            try await databaseManager.updateVideo(video)
+            uploadStatuses[url] = .completed(downloadURL)
+            uploadedVideoURLs.append(downloadURL)
+
+        } catch {
+            uploadStatuses[url] = .failed(error)
+            throw error
+        }
+    }
+
+    @MainActor
+    func cancelUpload(for url: URL) {
+        // Cancel the specific upload task
+        storageManager.cancelUpload(for: url)
+        uploadStatuses[url] = .failed(NSError(domain: "Upload", code: -1, userInfo: [NSLocalizedDescriptionKey: "Upload cancelled"]))
+    }
+
+    func cancelUpload() {
+        // Cancel all uploads
+        for url in selectedVideoURLs {
+            cancelUpload(for: url)
+        }
+        isUploading = false
     }
 
     // MARK: - Private Methods
@@ -108,45 +176,6 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
                 if let thumbnail = thumbnail {
                     self.thumbnails[url] = thumbnail
                 }
-            }
-        }
-    }
-
-    private func uploadSelectedVideos() async throws {
-        for url in selectedVideoURLs {
-            do {
-                let processedURL = try await videoProcessor.compressVideo(at: url, quality: mapQuality(selectedQuality))
-                let videoName = "\(UUID().uuidString).mp4"
-
-                uploadStatuses[url] = .uploading(progress: 0)
-                let downloadURL = try await storageManager.uploadVideo(processedURL, name: videoName)
-
-                var thumbnailURL: URL?
-                if let thumbnailImage = thumbnails[url],
-                   let thumbnailData = thumbnailImage.jpegData(compressionQuality: 0.8) {
-                    thumbnailURL = try await storageManager.uploadThumbnail(thumbnailData, for: videoName)
-                }
-
-                let video = Video(
-                    id: videoName,
-                    userId: Auth.auth().currentUser?.uid,
-                    videoURL: downloadURL,
-                    thumbnailURL: thumbnailURL,
-                    createdAt: Date(),
-                    caption: caption,
-                    likes: 0,
-                    comments: 0,
-                    isDeleted: false,
-                    privacyLevel: .public
-                )
-
-                try await databaseManager.updateVideo(video)
-                uploadStatuses[url] = .completed(downloadURL)
-                uploadedVideoURLs.append(downloadURL)
-
-            } catch {
-                uploadStatuses[url] = .failed(error)
-                throw error
             }
         }
     }
@@ -184,12 +213,5 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
                 }
             }
         }
-    }
-
-    func cancelUpload() {
-        // Cancel any ongoing upload process if applicable
-        // For now, we simply set isUploading to false as a placeholder
-        isUploading = false
-        // If there are any async tasks or network requests, cancel them here
     }
 }
