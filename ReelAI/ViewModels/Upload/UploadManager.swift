@@ -8,6 +8,7 @@ extension Notification.Name {
     static let uploadProgressUpdated = Notification.Name("uploadProgressUpdated")
 }
 
+@MainActor
 final class UploadManager {
     private let storage: StorageReference
     private let database: DatabaseReference
@@ -72,6 +73,54 @@ final class UploadManager {
 
         try await database.child("videos").childByAutoId().setValue(videoData)
         print("✅ Metadata saved successfully")
+    }
+
+    func uploadMultipleVideos(_ urls: [URL], metadatas: [VideoMetadata]) async throws -> [VideoUploadResult] {
+        print("🚀 Starting multiple video uploads: \(urls.count) videos")
+
+        var uploadResults: [VideoUploadResult] = []
+
+        // Use structured concurrency to upload videos in parallel
+        try await withThrowingTaskGroup(of: VideoUploadResult.self) { group in
+            for (index, url) in urls.enumerated() {
+                group.addTask {
+                    let metadata = metadatas[index]
+                    return try await self.uploadVideo(url, metadata: metadata)
+                }
+            }
+
+            // Collect results as they complete
+            for try await result in group {
+                uploadResults.append(result)
+
+                // Notify progress
+                NotificationCenter.default.post(
+                    name: .uploadProgressUpdated,
+                    object: nil,
+                    userInfo: ["progress": Double(uploadResults.count) / Double(urls.count)]
+                )
+            }
+        }
+
+        print("✅ Completed multiple video uploads: \(uploadResults.count) videos")
+        return uploadResults
+    }
+
+    func saveMultipleMetadata(_ metadatas: [VideoMetadata]) async throws {
+        print("🔄 Saving metadata for multiple videos: \(metadatas.count)")
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for metadata in metadatas {
+                group.addTask {
+                    try await self.saveMetadata(metadata)
+                }
+            }
+
+            // Wait for all metadata saves to complete
+            try await group.waitForAll()
+        }
+
+        print("✅ Saved metadata for all videos")
     }
 
     func cancelUpload() {

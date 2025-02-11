@@ -4,30 +4,47 @@ import UIKit
 
 extension Notification.Name {
     static let videoCacheCleared = Notification.Name("videoCacheCleared")
+    static let videoCacheSizeChanged = Notification.Name("videoCacheSizeChanged")
 }
 
 actor VideoCacheManager {
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "VideoCacheManager")
     private let fileManager: FileManager
     private let videoCacheDirectory: URL
     private let thumbnailCacheDirectory: URL
-    private let maxCacheSize: UInt64 = 500 * 1024 * 1024  // 500MB default
-    private let maxThumbnailCacheSize: UInt64 = 50 * 1024 * 1024  // 50MB default
+    private var cacheMetadata: [String: CacheEntry] = [:]
+    private let logger = Logger(subsystem: "com.reelai.videocache", category: "VideoCacheManager")
     
-    // Use actor-isolated property for thread safety
+    // Configurable cache limits
+    private let maxCacheSize: UInt64 = 1 * 1024 * 1024 * 1024  // 1GB for videos
+    private let maxThumbnailCacheSize: UInt64 = 100 * 1024 * 1024  // 100MB for thumbnails
+    private let maxCacheAge: TimeInterval = 7 * 24 * 60 * 60  // 1 week
+    
+    // Tracking cache metadata
     private var hasLoggedInitialStatus = false
 
+    // Cache entry to track metadata
+    private struct CacheEntry: Codable {
+        let id: String
+        let cachedAt: Date
+        let fileSize: Int64
+        var lastAccessedAt: Date
+    }
+
+    // Static shared instance with lazy initialization
     static let shared: VideoCacheManager = {
         do {
             return try VideoCacheManager()
         } catch {
-            fatalError("Failed to initialize VideoCacheManager: \(error)")
+            // Log the error and provide a fallback
+            print("❌ Failed to initialize VideoCacheManager: \(error)")
+            fatalError("Could not initialize VideoCacheManager")
         }
     }()
 
+    // Designated initializer
     private init() throws {
-        self.fileManager = FileManager.default
-
+        self.fileManager = .default
+        
         // Use the app support directory for persistent cache
         guard let appSupportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw VideoCacheError.failedToGetSupportDirectory
@@ -36,49 +53,140 @@ actor VideoCacheManager {
         self.videoCacheDirectory = appSupportDir.appendingPathComponent("VideoCache", isDirectory: true)
         self.thumbnailCacheDirectory = appSupportDir.appendingPathComponent("ThumbnailCache", isDirectory: true)
 
-        // Create cache directories if they don't exist
-        if !fileManager.fileExists(atPath: videoCacheDirectory.path) {
-            try fileManager.createDirectory(at: videoCacheDirectory, withIntermediateDirectories: true)
-        }
+        // Create cache directories
+        try Self.createDirectoriesNonIsolated(
+            directories: [videoCacheDirectory, thumbnailCacheDirectory], 
+            fileManager: fileManager
+        )
 
-        if !fileManager.fileExists(atPath: thumbnailCacheDirectory.path) {
-            try fileManager.createDirectory(at: thumbnailCacheDirectory, withIntermediateDirectories: true)
-        }
+        // Load cache metadata
+        self.cacheMetadata = try Self.loadCacheMetadataNonIsolated(
+            metadataURL: videoCacheDirectory.appendingPathComponent("cache_metadata.json"), 
+            fileManager: fileManager
+        )
 
-        // Add a .nomedia file to prevent thumbnails from showing in photo galleries
-        let nomediaPath = thumbnailCacheDirectory.appendingPathComponent(".nomedia")
-        if !fileManager.fileExists(atPath: nomediaPath.path) {
-            try Data().write(to: nomediaPath)
-        }
-
-        // Log initial status in next run loop to ensure proper initialization
-        Task { [self] in
-            await checkAndLogInitialStatus()
+        // Start periodic maintenance
+        Task { [weak self] in
+            try? await self?.performCacheMaintenance()
         }
     }
 
-    private func checkAndLogInitialStatus() async {
-        guard !hasLoggedInitialStatus else { return }
-        hasLoggedInitialStatus = true
+    // Static method for non-isolated directory creation
+    private static func createDirectoriesNonIsolated(
+        directories: [URL], 
+        fileManager: FileManager
+    ) throws {
+        for directory in directories {
+            if !fileManager.fileExists(atPath: directory.path) {
+                try fileManager.createDirectory(
+                    at: directory, 
+                    withIntermediateDirectories: true, 
+                    attributes: nil
+                )
+            }
+        }
+    }
+
+    // Static method for non-isolated metadata loading
+    private static func loadCacheMetadataNonIsolated(
+        metadataURL: URL, 
+        fileManager: FileManager
+    ) throws -> [String: CacheEntry] {
+        guard fileManager.fileExists(atPath: metadataURL.path) else { 
+            // Initialize empty metadata if file doesn't exist
+            return [:]
+        }
         
-        let message = "📱 VideoCacheManager initialized"
-        print(message)
-        logger.info("\(message)")
-        logCacheStatus()
+        let data = try Data(contentsOf: metadataURL)
+        return try JSONDecoder().decode([String: CacheEntry].self, from: data)
     }
 
-    enum VideoCacheError: Error {
-        case failedToGetSupportDirectory
-        case failedToCreateDirectory
-        case failedToSaveFile
-        case failedToLoadFile
-        case fileNotFound
-        case invalidData
-        case downloadFailed
-        case thumbnailConversionFailed
+    // Public async initialization method
+    static func initialize() async throws -> VideoCacheManager {
+        return try VideoCacheManager()
     }
 
-    // MARK: - Helper Methods
+    private func performCacheMaintenance() async throws {
+        let currentTime = Date()
+        
+        // Remove expired entries
+        var removedEntries = 0
+        for (id, entry) in cacheMetadata {
+            if currentTime.timeIntervalSince(entry.cachedAt) > maxCacheAge {
+                try? removeFile(at: getCacheURL(forIdentifier: id, fileExtension: "mp4"))
+                cacheMetadata.removeValue(forKey: id)
+                removedEntries += 1
+            }
+        }
+
+        // Enforce total cache size limit
+        try await enforceMaxCacheSize()
+
+        // Save updated metadata
+        try saveCacheMetadata()
+
+        logger.info("Cache maintenance: Removed \(removedEntries) expired entries")
+    }
+
+    private func enforceMaxCacheSize() async throws {
+        // Sort entries by last access time, oldest first
+        let sortedEntries = cacheMetadata.values.sorted { $0.lastAccessedAt < $1.lastAccessedAt }
+        var currentCacheSize = try await calculateSize(of: videoCacheDirectory)
+
+        for entry in sortedEntries {
+            guard currentCacheSize > maxCacheSize else { break }
+            
+            let fileURL = getCacheURL(forIdentifier: entry.id, fileExtension: "mp4")
+            try? removeFile(at: fileURL)
+            cacheMetadata.removeValue(forKey: entry.id)
+            
+            currentCacheSize -= UInt64(entry.fileSize)
+        }
+    }
+
+    func cacheVideo(from url: URL, withIdentifier id: String) throws -> URL {
+        let cachedFileURL = getCacheURL(forIdentifier: id, fileExtension: "mp4")
+
+        // Return cached version if exists and update access time
+        if fileExists(at: cachedFileURL) {
+            updateCacheEntryAccessTime(for: id)
+            return cachedFileURL
+        }
+
+        // Perform actual caching (synchronous)
+        let videoData = try Data(contentsOf: url)
+        try saveData(videoData, to: cachedFileURL)
+        
+        // Update cache metadata
+        let entry = CacheEntry(
+            id: id, 
+            cachedAt: Date(), 
+            fileSize: Int64(videoData.count), 
+            lastAccessedAt: Date()
+        )
+        cacheMetadata[id] = entry
+        
+        try saveCacheMetadata()
+        
+        // Notify of cache size change
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .videoCacheSizeChanged, object: nil)
+        }
+
+        logger.debug("Cached video for id: \(id)")
+        return cachedFileURL
+    }
+
+    private func updateCacheEntryAccessTime(for id: String) {
+        guard var entry = cacheMetadata[id] else { return }
+        entry.lastAccessedAt = Date()
+        cacheMetadata[id] = entry
+        
+        // Periodically save metadata to avoid constant writes
+        Task {
+            try? saveCacheMetadata()
+        }
+    }
 
     private func getCacheURL(forIdentifier identifier: String, fileExtension: String) -> URL {
         return videoCacheDirectory.appendingPathComponent("\(identifier).\(fileExtension)")
@@ -90,12 +198,6 @@ actor VideoCacheManager {
 
     private func fileExists(at url: URL) -> Bool {
         return fileManager.fileExists(atPath: url.path)
-    }
-
-    private func createDirectory(at url: URL) throws {
-        if !fileExists(at: url) {
-            try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
-        }
     }
 
     private func saveData(_ data: Data, to url: URL) throws {
@@ -124,24 +226,6 @@ actor VideoCacheManager {
             logger.error("Failed to move file to cache: \(error.localizedDescription)")
             throw error
         }
-    }
-
-    // MARK: - Public Methods
-
-    func cacheVideo(from url: URL, withIdentifier id: String) async throws -> URL {
-        let cachedFileURL = getCacheURL(forIdentifier: id, fileExtension: "mp4")
-
-        // Return cached version if exists
-        if fileExists(at: cachedFileURL) {
-            return cachedFileURL
-        }
-
-        // Download and cache
-        let (downloadURL, _) = try await URLSession.shared.download(from: url)
-        try moveFileToCache(from: downloadURL, to: cachedFileURL)
-
-        logger.debug("Cached video for id: \(id)")
-        return cachedFileURL
     }
 
     func getCachedThumbnail(withIdentifier id: String) async -> UIImage? {
@@ -263,7 +347,10 @@ actor VideoCacheManager {
             """
             
             // Only log once
-            logger.info("\(message)")
+            if !hasLoggedInitialStatus {
+                logger.info("\(message)")
+                hasLoggedInitialStatus = true
+            }
         }
     }
     
@@ -278,5 +365,22 @@ actor VideoCacheManager {
             let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
             return total + UInt64(resourceValues.fileSize ?? 0)
         }
+    }
+
+    private func saveCacheMetadata() throws {
+        let metadataURL = videoCacheDirectory.appendingPathComponent("cache_metadata.json")
+        let data = try JSONEncoder().encode(cacheMetadata)
+        try data.write(to: metadataURL)
+    }
+
+    enum VideoCacheError: Error {
+        case failedToGetSupportDirectory
+        case failedToCreateDirectory
+        case failedToSaveFile
+        case failedToLoadFile
+        case fileNotFound
+        case invalidData
+        case downloadFailed
+        case thumbnailConversionFailed
     }
 }

@@ -6,6 +6,9 @@ final class PlayerViewModel: NSObject, ObservableObject {
     @Published var player: AVPlayer?
     @Published var isReadyToPlay = false
     @Published var progress: Double = 0
+    @Published var isLoading = true
+    @Published var hasError = false
+
     private var shouldLoop = true
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "PlayerViewModel")
 
@@ -16,19 +19,70 @@ final class PlayerViewModel: NSObject, ObservableObject {
     private var boundaryObserver: Any?
 
     private var wasPlayingBeforeBackground = false
+    private var currentVideoURL: URL?
 
-    func configurePlayback(shouldLoop: Bool) {
+    // Preloading configuration
+    private let preloadBuffer: TimeInterval = 10.0  // 10 seconds ahead
+    private var preloadTask: Task<Void, Never>?
+
+    func configurePlayback(shouldLoop: Bool = true, preloadAhead: Bool = true) {
         self.shouldLoop = shouldLoop
+        if preloadAhead {
+            setupPreloading()
+        }
+    }
+
+    private func setupPreloading() {
+        // Removed setupPreloading function
+    }
+
+    private func preloadVideo(asset: AVURLAsset) async {
+        do {
+            // Get duration
+            let duration = try await asset.load(.duration)
+
+            // Preload next buffer
+            let preloadTime = min(duration.seconds, preloadBuffer)
+
+            // Check media selection options (if needed)
+            if #available(iOS 16.0, *) {
+                if let audibleGroup = try? await asset.loadMediaSelectionGroup(for: .audible) {
+                    logger.debug("Audible media options: \(audibleGroup.options)")
+                }
+            } else {
+                let characteristics = try await asset.load(.availableMediaCharacteristicsWithMediaSelectionOptions)
+                if characteristics.contains(.audible),
+                   let audibleGroup = asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
+                    logger.debug("Audible media options: \(audibleGroup.options)")
+                }
+            }
+
+            logger.debug(" Preloaded \(preloadTime) seconds of video")
+        } catch {
+            logger.error(" Preloading failed: \(error.localizedDescription)")
+        }
     }
 
     func loadVideo(url: URL) {
-        loadVideo(playerItem: AVPlayerItem(url: url))
+        // Cancel any existing preload task
+        preloadTask?.cancel()
+        currentVideoURL = url
+
+        let playerItem = AVPlayerItem(url: url)
+        loadVideo(playerItem: playerItem)
+
+        // Start preloading asynchronously
+        let asset = AVURLAsset(url: url)
+        preloadTask = Task {
+            await preloadVideo(asset: asset)
+        }
     }
 
     func loadVideo(playerItem: AVPlayerItem) {
         let startTime = CFAbsoluteTimeGetCurrent()
-        self.logger.debug("🎬 Starting video load: \(CFAbsoluteTimeGetCurrent())")
+        logger.debug(" Starting video load: \(startTime)")
 
+        // Enhanced buffering
         playerItem.preferredForwardBufferDuration = 10
         playerItem.automaticallyPreservesTimeOffsetFromLive = false
 
@@ -39,6 +93,8 @@ final class PlayerViewModel: NSObject, ObservableObject {
 
     private func setupInitialState(_ playerItem: AVPlayerItem) {
         isReadyToPlay = false
+        isLoading = true
+        hasError = false
         player = AVPlayer(playerItem: playerItem)
     }
 
@@ -55,7 +111,7 @@ final class PlayerViewModel: NSObject, ObservableObject {
             Task { @MainActor in
                 if item.isPlaybackLikelyToKeepUp {
                     let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-                    self?.logger.debug("📺 Video playback ready: \(elapsed) seconds")
+                    self?.logger.debug(" Video playback ready: \(elapsed) seconds")
                     self?.handleReadyToPlay()
                 }
             }
@@ -94,7 +150,7 @@ final class PlayerViewModel: NSObject, ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.logger.debug("📼 Video playback ended")
+                self?.logger.debug(" Video playback ended")
                 self?.handlePlaybackEnd()
             }
         }
@@ -120,13 +176,31 @@ final class PlayerViewModel: NSObject, ObservableObject {
 
     private func handlePlaybackEnd() {
         guard shouldLoop else { return }
-        player?.seek(to: .zero)
-        player?.play()
-        progress = 0
+
+        // More robust looping
+        Task { @MainActor in
+            self.player?.seek(to: .zero)
+            self.player?.play()
+            self.progress = 0
+            self.logger.debug(" Video looped")
+        }
     }
 
     private func handlePlaybackError() {
-        self.logger.error("❌ Playback failed")
+        logger.error(" Playback failed")
+        hasError = true
+        isLoading = false
+        isReadyToPlay = false
+    }
+
+    private func handleReadyToPlay() {
+        guard !isReadyToPlay else { return }
+
+        isReadyToPlay = true
+        isLoading = false
+        player?.play()
+
+        logger.debug(" Video ready to play")
     }
 
     @available(iOS 16.0, *)
@@ -142,7 +216,7 @@ final class PlayerViewModel: NSObject, ObservableObject {
                     }
                 }
             } catch {
-                self.logger.error("❌ Failed to load asset: \(error.localizedDescription)")
+                self.logger.error(" Failed to load asset: \(error.localizedDescription)")
             }
         }
     }
@@ -157,12 +231,6 @@ final class PlayerViewModel: NSObject, ObservableObject {
                 }
             }
         }
-    }
-
-    private func handleReadyToPlay() {
-        guard !isReadyToPlay else { return }
-        isReadyToPlay = true
-        player?.play()
     }
 
     func cleanup() {

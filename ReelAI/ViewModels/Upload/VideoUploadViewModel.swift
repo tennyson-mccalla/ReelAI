@@ -1,180 +1,195 @@
-// Core view model with main upload flow and state management
-// ~100 lines
-
 import SwiftUI
 import FirebaseAuth
 import FirebaseStorage
+import FirebaseDatabase
+import AVFoundation
+import CoreMedia
+import Network
+import UIKit
+import Foundation
 
 @MainActor
-final class VideoUploadViewModel: ObservableObject {
-    @Published private(set) var uploadProgress: Double = 0
-    @Published private(set) var isUploading = false
-    @Published private(set) var errorMessage: String?
+final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol {
+    // MARK: - Published Properties
+    @Published var uploadProgress: Double = 0
+    @Published var isUploading = false
+    @Published var errorMessage: String?
     @Published var selectedVideoURL: URL?
     @Published var thumbnailImage: UIImage?
     @Published var caption: String = ""
-    @Published private(set) var uploadComplete = false
+    @Published var uploadComplete = false
     @Published var lastUploadedVideoURL: URL?
-    @Published var selectedQuality: VideoProcessor.Quality = .medium
+    @Published var selectedQuality: VideoQuality = .medium
     @Published var shouldNavigateToProfile = false
+    @Published var selectedVideoURLs: [URL] = []
+    @Published var uploadedVideoURLs: [URL] = []
+    @Published var uploadStatuses: [URL: UploadStatus] = [:]
+    @Published var thumbnails: [URL: UIImage] = [:]
+    @Published var networkStatus: NetworkMonitor.NetworkStatus = .unknown
 
-    private let processor: VideoProcessor
-    private let uploadManager: UploadManager
-    private let progressTracker: UploadProgress
+    // MARK: - Dependencies
+    private let networkMonitor = NetworkMonitor.shared
+    private let videoProcessor = VideoProcessor()
+    private let storageManager: StorageManager
+    private let databaseManager: FirebaseDatabaseManager
 
-    init(processor: VideoProcessor = .init(),
-         uploadManager: UploadManager = .init(),
-         progressTracker: UploadProgress = .init()) {
-        self.processor = processor
-        self.uploadManager = uploadManager
-        self.progressTracker = progressTracker
-        
-        // Observe upload progress
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleProgressUpdate),
-            name: .uploadProgressUpdated,
-            object: nil
-        )
+    // MARK: - Initialization
+    init(storageManager: StorageManager, databaseManager: FirebaseDatabaseManager) {
+        self.storageManager = storageManager
+        self.databaseManager = databaseManager
+        setupNetworkMonitoring()
     }
 
-    @objc private func handleProgressUpdate(_ notification: Notification) {
-        if let progress = notification.userInfo?["progress"] as? Double {
-            DispatchQueue.main.async {
-                self.uploadProgress = progress
+    // Convenience initializer with default dependencies
+    convenience init() {
+        self.init(storageManager: FirebaseStorageManager(), databaseManager: FirebaseDatabaseManager.shared)
+    }
+
+    private func setupNetworkMonitoring() {
+        networkMonitor.startMonitoring { [weak self] status in
+            guard let self = self else { return }
+            self.networkStatus = status
+        }
+    }
+
+    // MARK: - VideoUploadViewModelProtocol Implementation
+    public func setSelectedVideos(urls: [URL]) {
+        selectedVideoURLs = urls
+        uploadStatuses = Dictionary(uniqueKeysWithValues: urls.map { ($0, .pending) })
+
+        Task {
+            await self.generateThumbnails(for: urls)
+        }
+    }
+
+    public func setError(_ error: PublicUploadError) {
+        errorMessage = error.localizedDescription
+    }
+
+    public func uploadVideos() {
+        guard !selectedVideoURLs.isEmpty else {
+            setError(.videoProcessingFailed(reason: "No videos selected"))
+            return
+        }
+
+        guard networkMonitor.isConnected else {
+            setError(.networkUnavailable)
+            return
+        }
+
+        Task {
+            self.isUploading = true
+
+            do {
+                try await self.uploadSelectedVideos()
+                await MainActor.run {
+                    self.uploadComplete = true
+                    self.isUploading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.setError(.videoProcessingFailed(reason: error.localizedDescription))
+                    self.isUploading = false
+                }
             }
         }
     }
 
-    func uploadVideo() {
-        print("📱 Starting upload process")
-        guard let videoURL = selectedVideoURL else {
-            print("❌ No video URL selected")
-            errorMessage = "No video selected"
-            return
-        }
+    // MARK: - Private Methods
+    private func generateThumbnails(for urls: [URL]) async {
+        await withTaskGroup(of: (URL, UIImage?).self) { group in
+            for url in urls {
+                group.addTask {
+                    return (url, await self.generateThumbnail(for: url))
+                }
+            }
 
-        guard NetworkMonitor.shared.isConnected else {
-            print("❌ No network connection")
-            errorMessage = "No internet connection. Please try again."
-            return
-        }
-
-        isUploading = true
-        errorMessage = nil
-
-        Task {
-            do {
-                try await processAndUploadVideo(from: videoURL)
-            } catch {
-                await handleUploadError(error)
+            for await (url, thumbnail) in group {
+                if let thumbnail = thumbnail {
+                    self.thumbnails[url] = thumbnail
+                }
             }
         }
     }
 
-    private func processAndUploadVideo(from videoURL: URL) async throws {
-        // 1. Compress video
-        print("📱 Starting video compression")
-        let compressedVideoURL = try await processor.compressVideo(at: videoURL, quality: selectedQuality)
-        defer { try? FileManager.default.removeItem(at: compressedVideoURL) }
-
-        // 2. Generate thumbnail and metadata
-        let baseVideoName = UUID().uuidString
-        let videoName = baseVideoName + ".mp4"
-        let thumbnailName = baseVideoName + ".jpg"
-        print("📱 Starting video upload: \(videoName)")
-
-        guard let userId = Auth.auth().currentUser?.uid else {
-            throw NSError(domain: "UploadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
-        }
-
-        // Generate and upload thumbnail
-        guard let thumbnail = thumbnailImage,
-              let thumbnailData = thumbnail.jpegData(compressionQuality: 0.8) else {
-            throw NSError(domain: "UploadError", code: -2, userInfo: [NSLocalizedDescriptionKey: "Could not prepare thumbnail"])
-        }
-
-        let thumbnailRef = Storage.storage().reference().child("thumbnails/\(thumbnailName)")
-        let thumbnailMetadata = StorageMetadata()
-        thumbnailMetadata.contentType = "image/jpeg"
-        _ = try await thumbnailRef.putDataAsync(thumbnailData, metadata: thumbnailMetadata)
-        let thumbnailURL = try await thumbnailRef.downloadURL()
-
-        let metadata = VideoMetadata(
-            userId: userId,
-            videoName: videoName,
-            caption: caption,
-            timestamp: Date(),
-            thumbnailURL: thumbnailURL.absoluteString
-        )
-
-        // 3. Upload video
-        let result = try await uploadManager.uploadVideo(compressedVideoURL, metadata: metadata)
-        lastUploadedVideoURL = result.videoURL
-
-        // 4. Save metadata
-        try await uploadManager.saveMetadata(metadata)
-
-        // 5. Update UI
-        updateUIAfterSuccess()
-    }
-
-    private func handleUploadError(_ error: Error) async {
-        print("❌ Upload error: \(error.localizedDescription)")
-        let nsError = error as NSError
-        if nsError.domain == StorageErrorDomain &&
-           nsError.code == StorageErrorCode.cancelled.rawValue {
-            errorMessage = "Upload canceled"
-        } else {
-            errorMessage = "Upload failed: \(error.localizedDescription)"
-        }
-        isUploading = false
-    }
-
-    private func updateUIAfterSuccess() {
-        uploadComplete = true
-        isUploading = false
-        selectedVideoURL = nil
-        thumbnailImage = nil
-        caption = ""
-        errorMessage = "✅ Upload complete!"
-        shouldNavigateToProfile = true
-    }
-
-    func setError(_ message: String) {
-        errorMessage = message
-    }
-
-    func setSelectedVideo(url: URL) {
-        print("📱 ViewModel: Setting selected video URL: \(url.path)")
-        selectedVideoURL = url
-        Task {
+    private func uploadSelectedVideos() async throws {
+        for url in selectedVideoURLs {
             do {
-                print("📱 ViewModel: Generating thumbnail...")
-                thumbnailImage = try await processor.generateThumbnail(from: url)
-                print("📱 ViewModel: Thumbnail generated successfully")
+                let processedURL = try await videoProcessor.compressVideo(at: url, quality: mapQuality(selectedQuality))
+                let videoName = "\(UUID().uuidString).mp4"
+
+                uploadStatuses[url] = .uploading(progress: 0)
+                let downloadURL = try await storageManager.uploadVideo(processedURL, name: videoName)
+
+                var thumbnailURL: URL?
+                if let thumbnailImage = thumbnails[url],
+                   let thumbnailData = thumbnailImage.jpegData(compressionQuality: 0.8) {
+                    thumbnailURL = try await storageManager.uploadThumbnail(thumbnailData, for: videoName)
+                }
+
+                let video = Video(
+                    id: videoName,
+                    userId: Auth.auth().currentUser?.uid,
+                    videoURL: downloadURL,
+                    thumbnailURL: thumbnailURL,
+                    createdAt: Date(),
+                    caption: caption,
+                    likes: 0,
+                    comments: 0,
+                    isDeleted: false,
+                    privacyLevel: .public
+                )
+
+                try await databaseManager.updateVideo(video)
+                uploadStatuses[url] = .completed(downloadURL)
+                uploadedVideoURLs.append(downloadURL)
+
             } catch {
-                print("❌ ViewModel: Thumbnail generation failed: \(error.localizedDescription)")
-                setError("Could not generate thumbnail: \(error.localizedDescription)")
+                uploadStatuses[url] = .failed(error)
+                throw error
+            }
+        }
+    }
+
+    private func mapQuality(_ quality: VideoQuality) -> VideoProcessor.Quality {
+        switch quality {
+        case .high:
+            return .high
+        case .medium:
+            return .medium
+        case .low:
+            return .low
+        }
+    }
+
+    private func generateThumbnail(for videoURL: URL) async -> UIImage? {
+        let asset = AVURLAsset(url: videoURL)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+
+        return await withCheckedContinuation { continuation in
+            generator.generateCGImageAsynchronously(
+                for: CMTime(seconds: 1, preferredTimescale: 60)
+            ) { cgImage, _, error in
+                if let error = error {
+                    print("❌ Could not generate thumbnail for video: \(error.localizedDescription)")
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                if let cgImage = cgImage {
+                    continuation.resume(returning: UIImage(cgImage: cgImage))
+                } else {
+                    continuation.resume(returning: nil)
+                }
             }
         }
     }
 
     func cancelUpload() {
-        print("📱 Cancel button pressed")
-        uploadManager.cancelUpload()
+        // Cancel any ongoing upload process if applicable
+        // For now, we simply set isUploading to false as a placeholder
         isUploading = false
-        uploadProgress = 0
-        errorMessage = "Upload canceled"
-    }
-
-    func reset() {
-        selectedVideoURL = nil
-        thumbnailImage = nil
-        caption = ""
-        uploadComplete = false
-        uploadProgress = 0
-        errorMessage = nil
-        isUploading = false
+        // If there are any async tasks or network requests, cancel them here
     }
 }

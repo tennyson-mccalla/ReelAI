@@ -1,116 +1,115 @@
 import SwiftUI
 import AVKit
+import os
+
+class PlayerObserver: ObservableObject {
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "PlayerObserver")
+    private var timeObserver: Any?
+    private var statusObserver: NSKeyValueObservation?
+    private var loadedRangesObserver: NSKeyValueObservation?
+    private var player: AVPlayer?
+    
+    @Published var isReady = false
+    @Published var isPreloaded = false
+    @Published var bufferingProgress: Double = 0
+    
+    init(player: AVPlayer, videoId: String) {
+        self.player = player
+        setupObservers(for: player, videoId: videoId)
+    }
+    
+    private func setupObservers(for player: AVPlayer, videoId: String) {
+        statusObserver = player.currentItem?.observe(\.status) { [weak self] item, _ in
+            DispatchQueue.main.async {
+                if item.status == .readyToPlay {
+                    self?.isReady = true
+                }
+            }
+        }
+        
+        loadedRangesObserver = player.currentItem?.observe(\.loadedTimeRanges) { [weak self] item, _ in
+            let duration = item.duration.seconds
+            guard duration.isFinite,
+                  duration > 0,
+                  !duration.isNaN else { return }
+            
+            let loadedDuration = item.loadedTimeRanges.reduce(0.0) { total, range in
+                let timeRange = range.timeRangeValue
+                return total + timeRange.duration.seconds
+            }
+            DispatchQueue.main.async {
+                self?.bufferingProgress = loadedDuration / duration
+                self?.isPreloaded = loadedDuration / duration >= 0.95
+            }
+        }
+        
+        NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime,
+                                             object: player.currentItem,
+                                             queue: .main) { [weak player] _ in
+            player?.seek(to: .zero)
+            player?.play()
+        }
+    }
+    
+    deinit {
+        if let timeObserver = timeObserver {
+            player?.removeTimeObserver(timeObserver)
+        }
+        statusObserver?.invalidate()
+        loadedRangesObserver?.invalidate()
+        NotificationCenter.default.removeObserver(self)
+    }
+}
 
 struct VideoPlayerView: View {
-    let videoURL: URL
-    let videoId: String
-    let feedViewModel: VideoFeedViewModel
-    let isPlaying: Bool
+    let video: Video
+    let isMuted: Bool
+    let isPreloading: Bool
+    @StateObject private var observer: PlayerObserver
+    private let player: AVPlayer
     
-    @State private var player: AVPlayer?
-    @State private var isLoaded = false
-    @State private var playerState = PlayerState()
-    @State private var observation: NSKeyValueObservation?
+    init(video: Video, isMuted: Bool = false, isPreloading: Bool = false) {
+        self.video = video
+        self.isMuted = isMuted
+        self.isPreloading = isPreloading
+        
+        let player = AVPlayer(url: video.videoURL)
+        player.isMuted = isMuted
+        player.actionAtItemEnd = .none
+        player.automaticallyWaitsToMinimizeStalling = false
+        
+        // Preload video if specified
+        if isPreloading {
+            let item = player.currentItem
+            item?.preferredForwardBufferDuration = 10
+            player.preroll(atRate: 1) { _ in }
+        }
+        
+        _observer = StateObject(wrappedValue: PlayerObserver(player: player, videoId: video.id))
+        self.player = player
+    }
     
     var body: some View {
-        GeometryReader { _ in
-            ZStack {
-                if let player = player, isLoaded {
-                    VideoPlayer(player: player)
-                        .edgesIgnoringSafeArea(.all)
-                        .disabled(true)
-                } else {
-                    Color.black
-                }
-                
-                // Loading indicator
-                if !isLoaded {
+        VideoPlayer(player: player)
+            .opacity(observer.isReady ? 1 : 0)
+            .overlay {
+                if !observer.isReady {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         .scaleEffect(1.5)
                 }
             }
             .onAppear {
-                print("🎥 VideoPlayerView appeared for \(videoId)")
-                if player == nil {
-                    setupPlayer()
+                if !isPreloading {
+                    player.play()
                 }
             }
             .onDisappear {
-                print("🎥 VideoPlayerView disappeared for \(videoId)")
-                cleanupPlayer()
-            }
-            .onChange(of: isPlaying) { _, playing in
-                handlePlaybackChange(playing)
-            }
-        }
-        .edgesIgnoringSafeArea(.all)
-        .background(Color.black)
-    }
-    
-    private func handlePlaybackChange(_ playing: Bool) {
-        guard let player = player, isLoaded else {
-            print("🎥 Player not ready for playback change on \(videoId)")
-            return
-        }
-        
-        if playing {
-            print("🎥 Starting playback for \(videoId)")
-            player.seek(to: .zero)
-            player.play()
-            playerState.isPlaying = true
-        } else {
-            print("🎥 Pausing playback for \(videoId)")
-            player.pause()
-            playerState.isPlaying = false
-        }
-    }
-    
-    private func setupPlayer() {
-        print("🎥 Setting up player for \(videoId)")
-        
-        // Create player and item
-        let player = AVPlayer(url: videoURL)
-        player.automaticallyWaitsToMinimizeStalling = false
-        
-        // Store the player first
-        self.player = player
-        
-        // Add observer for loading status
-        observation = player.currentItem?.observe(\.status) { item, _ in
-            Task { @MainActor in
-                switch item.status {
-                case .readyToPlay:
-                    print("🎥 Player ready for \(videoId)")
-                    isLoaded = true
-                    if isPlaying {
-                        player.play()
-                        playerState.isPlaying = true
-                    }
-                case .failed:
-                    print("❌ Player failed for \(videoId): \(String(describing: item.error))")
-                default:
-                    break
+                player.pause()
+                if !isPreloading {
+                    player.replaceCurrentItem(with: nil)
                 }
             }
-        }
-        
-        // Enable audio session
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            print("❌ Failed to set audio session: \(error)")
-        }
-    }
-    
-    private func cleanupPlayer() {
-        print("🎥 Cleaning up player for \(videoId)")
-        player?.pause()
-        observation?.invalidate()
-        observation = nil
-        player = nil
-        isLoaded = false
-        playerState.isPlaying = false
+            .animation(.easeInOut, value: observer.isReady)
     }
 }

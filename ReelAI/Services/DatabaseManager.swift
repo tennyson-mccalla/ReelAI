@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 protocol DatabaseManager {
     func updateProfile(_ profile: UserProfile) async throws
     func fetchProfile(userId: String) async throws -> UserProfile

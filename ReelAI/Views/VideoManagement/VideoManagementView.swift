@@ -9,9 +9,9 @@ struct VideoManagementView: View {
     @State private var editedCaption: String
     @State private var currentPrivacyLevel: Video.PrivacyLevel
 
-    init(video: Video, viewModel: VideoManagementViewModel? = nil) {
+    init(video: Video) {
         self.video = video
-        self._viewModel = StateObject(wrappedValue: viewModel ?? VideoManagementViewModel())
+        self._viewModel = StateObject(wrappedValue: VideoManagementViewModel.create())
         self._editedCaption = State(initialValue: video.caption)
         self._currentPrivacyLevel = State(initialValue: video.privacyLevel)
     }
@@ -131,5 +131,8 @@ private struct CaptionEditorView: View {
 #Preview {
     NavigationView {
         VideoManagementView(video: .mock)
+            .task {
+                // Preview setup can happen here if needed
+            }
     }
 }

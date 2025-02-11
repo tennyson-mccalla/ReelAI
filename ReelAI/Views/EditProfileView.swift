@@ -1,19 +1,25 @@
 import SwiftUI
 import FirebaseStorage
 import FirebaseDatabase
+import FirebaseAuth
 
+@MainActor
 struct EditProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: EditProfileViewModel
     @State private var showingPhotoPicker = false
 
+    @MainActor
     init(profile: UserProfile,
-         storage: StorageManager = FirebaseStorageManager(),
-         database: DatabaseManager = FirebaseDatabaseManager()) {
+         storage: StorageManager,
+         databaseManager: DatabaseManager,
+         authService: FirebaseAuthService) {
         _viewModel = StateObject(wrappedValue: EditProfileViewModel(
             profile: profile,
             storage: storage,
-            database: database
+            database: databaseManager,
+            authService: authService,
+            databaseManager: databaseManager
         ))
     }
 
@@ -95,28 +101,52 @@ private struct PhotoSelectorButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack {
-                AsyncImage(url: photoURL) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
+            ZStack(alignment: .bottomTrailing) {
+                // Use AsyncImage with cache-busting technique
+                AsyncImage(url: photoWithTimestamp) { image in
+                    image.resizable()
+                         .aspectRatio(contentMode: .fill)
+                         .frame(width: 120, height: 120)
+                         .clipShape(Circle())
                 } placeholder: {
-                    Color.gray.opacity(0.2)
-                }
-                .frame(width: 60, height: 60)
-                .clipShape(Circle())
-                .overlay {
-                    if isLoading {
-                        ProgressView()
-                            .background(.ultraThinMaterial)
-                            .clipShape(Circle())
-                    }
+                    Image(systemName: "person.circle.fill")
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 120, height: 120)
+                        .foregroundColor(.gray)
                 }
 
-                Text("Change Photo")
-                    .foregroundColor(.accentColor)
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .frame(width: 30, height: 30)
+                        .background(Color.black.opacity(0.5))
+                        .clipShape(Circle())
+                        .offset(x: -10, y: -10)
+                } else {
+                    Image(systemName: "pencil.circle.fill")
+                        .resizable()
+                        .frame(width: 30, height: 30)
+                        .background(Color.white)
+                        .clipShape(Circle())
+                        .offset(x: -10, y: -10)
+                }
             }
         }
+    }
+
+    // Add a timestamp to force image refresh
+    private var photoWithTimestamp: URL? {
+        guard let photoURL = photoURL,
+              var urlComponents = URLComponents(url: photoURL, resolvingAgainstBaseURL: false) else {
+            return photoURL
+        }
+
+        // Add a timestamp query parameter to force refresh
+        let timestampQuery = URLQueryItem(name: "timestamp", value: "\(Date().timeIntervalSince1970)")
+        urlComponents.queryItems = (urlComponents.queryItems ?? []) + [timestampQuery]
+
+        return urlComponents.url
     }
 }
 

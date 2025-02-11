@@ -1,136 +1,159 @@
+import Foundation
 import FirebaseDatabase
-import AVFoundation
+import os
+import SwiftUI
+import Network
 
 @MainActor
-class VideoFeedViewModel: NSObject, ObservableObject {
-    struct FeedState {
-        var isLoading = false
-        var videos: [Video] = []
-        var error: String?
-        var loadingMessage: String?
-    }
+class VideoFeedViewModel: ObservableObject {
+    @Published private(set) var currentVideo: Video?
+    @Published private(set) var previousVideo: Video?
+    @Published private(set) var nextVideo: Video?
+    @Published private(set) var isLoading = false
+    @Published private(set) var error: String?
+    @Published private(set) var networkStatus: NetworkMonitor.NetworkStatus = .unknown
+    @Published var transitionProgress: Double = 0
 
-    @Published private(set) var state = FeedState()
-    @Published var currentlyPlayingId: String?
-
-    var isLoading: Bool { state.isLoading }
-    var videos: [Video] { state.videos }
-    var error: String? { state.error }
-    var loadingMessage: String? { state.loadingMessage }
-
+    private var videos: [Video] = []
+    private var currentIndex = 0
     private let paginator: FeedPaginator
-    private let database: DatabaseReference
-    private var preloadedVideos: Set<String> = []
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "VideoFeedViewModel")
+    private var isPreloadingMore = false
+    private let networkMonitor = NetworkMonitor.shared
+    private var retryCount = 0
+    private let maxRetries = 3
 
-    override init() {
-        self.database = Database.database().reference()
-        self.paginator = FeedPaginator()
-        super.init()
+    init(paginator: FeedPaginator? = nil) {
+        self.paginator = paginator ?? FeedPaginator()
+        setupNetworkMonitoring()
     }
 
-    init(database: DatabaseReference = Database.database().reference(),
-         paginator: FeedPaginator = .init()) {
-        self.database = database
-        self.paginator = paginator
-        super.init()
-    }
+    private func setupNetworkMonitoring() {
+        networkMonitor.startMonitoring { [weak self] status in
+            guard let self = self else { return }
 
-    func loadVideos() {
-        Task {
-            await loadVideosWithRetry()
+            Task { @MainActor in
+                // Update status and check if we need to load videos
+                self.networkStatus = status
+
+                // Only start loading if we have no videos
+                let shouldLoad = status == .satisfied && self.videos.isEmpty
+                if shouldLoad {
+                    await self.loadVideos()
+                }
+            }
         }
     }
 
-    private func loadVideosWithRetry(delay: TimeInterval = 1.0) async {
-        state.isLoading = true
-        state.loadingMessage = "Loading videos..."
-        print("📡 Loading videos...")
+    func loadVideos() async {
+        guard networkStatus == .satisfied else {
+            error = "No network connection"
+            return
+        }
+
+        isLoading = true
+        error = nil
 
         do {
-            print("📡 Fetching next batch...")
-            let videos = try await paginator.fetchNextBatch(from: database)
-            print("📡 Got \(videos.count) videos")
-            
-            guard !videos.isEmpty else {
-                state.error = "No videos available"
-                state.isLoading = false
-                state.loadingMessage = nil
-                return
-            }
-            
-            // Shuffle once and store the order
-            if state.videos.isEmpty {
-                state.videos = videos.shuffled()
-                // Set initial playing video
-                if currentlyPlayingId == nil {
-                    currentlyPlayingId = state.videos.first?.id
-                    print("📱 Set initial playing video: \(currentlyPlayingId ?? "none")")
-                }
+            videos = try await fetchVideosWithRetry()
+            if !videos.isEmpty {
+                currentIndex = 0
+                updateVideoViews()
+                preloadNextBatchIfNeeded()
             } else {
-                state.videos = videos
+                error = "No videos found"
             }
-            
-            state.isLoading = false
-            state.loadingMessage = nil
-            print("📡 Updated state with videos: \(videos.count) videos available")
-            
         } catch {
-            print("❌ Load error: \(error)")
-            await handleLoadError(error, delay: delay)
+            handleLoadError(error)
+        }
+
+        isLoading = false
+    }
+
+    private func fetchVideosWithRetry() async throws -> [Video] {
+        var lastError: Error?
+
+        for attempt in 0..<maxRetries {
+            do {
+                return try await paginator.fetchNextBatch()
+            } catch {
+                lastError = error
+
+                // Only retry for network-related errors
+                guard error.isRetryableNetworkError else {
+                    throw error
+                }
+
+                // Exponential backoff
+                try await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt)) * 1_000_000_000))
+            }
+        }
+
+        throw lastError ?? NSError(domain: "VideoFeedError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to fetch videos"])
+    }
+
+    private func handleLoadError(_ error: Error) {
+        let networkError = error as NSError
+
+        NetworkErrorHandler.handle(
+            error,
+            retryAction: { [weak self] in
+                // Retry action
+                Task { await self?.loadVideos() }
+            },
+            fallbackAction: { [weak self] in
+                // Fallback action
+                self?.error = networkError.localizedDescription
+                self?.logger.error("❌ Failed to load videos: \(networkError.localizedDescription)")
+            }
+        )
+    }
+
+    func moveToNext() {
+        guard currentIndex < videos.count - 1 else { return }
+        currentIndex += 1
+        updateVideoViews()
+        preloadNextBatchIfNeeded()
+    }
+
+    func moveToPrevious() {
+        guard currentIndex > 0 else { return }
+        currentIndex -= 1
+        updateVideoViews()
+    }
+
+    private func updateVideoViews() {
+        currentVideo = videos[currentIndex]
+        previousVideo = videos[safe: currentIndex - 1]
+        nextVideo = videos[safe: currentIndex + 1]
+    }
+
+    private func preloadNextBatchIfNeeded() {
+        guard !isPreloadingMore,
+              currentIndex >= videos.count - 3,
+              !videos.isEmpty,
+              networkStatus == .satisfied else { return }
+
+        Task {
+            isPreloadingMore = true
+            do {
+                let newVideos = try await fetchVideosWithRetry()
+                if !newVideos.isEmpty {
+                    videos.append(contentsOf: newVideos)
+                    updateVideoViews()
+                }
+            } catch {
+                logger.error("❌ Failed to preload next batch: \(error.localizedDescription)")
+            }
+            isPreloadingMore = false
         }
     }
 
-    private func handleLoadError(_ error: Error, delay: TimeInterval) async {
-        print("❌ Failed to load videos: \(error.localizedDescription)")
-        state.error = error.localizedDescription
-        state.isLoading = false
-        print("❌ Updated state with error")
+    deinit {
+        // Avoid capturing self in the deinit Task
+        let monitor = networkMonitor
+        Task {
+            await monitor.stopMonitoring()
+        }
     }
-
-    func preloadVideo(_ video: Video) async {
-        guard !preloadedVideos.contains(video.id) else { return }
-        preloadedVideos.insert(video.id)
-        print("🎥 Preloading video: \(video.id)")
-    }
-    
-    func cancelPreload(_ videoId: String) {
-        preloadedVideos.remove(videoId)
-        print("🎥 Cancelled preload for: \(videoId)")
-    }
-
-    func cleanup() {
-        preloadedVideos.removeAll()
-        paginator.cleanup()
-    }
-
-    func setLoading(_ isLoading: Bool) {
-        state.isLoading = isLoading
-    }
-
-    func setError(_ message: String?) {
-        state.error = message
-    }
-
-    func reset() {
-        state = FeedState()
-        preloadedVideos.removeAll()
-        loadVideos()
-    }
-
-    func handleBackground() async {
-        print("📱 App entered background")
-        // Pause current video if needed
-    }
-
-    func handleForeground() async {
-        print("📱 App entered foreground")
-        // Resume current video if needed
-    }
-    
-    // For previews only
-    #if DEBUG
-    func setVideos(_ videos: [Video]) {
-        state.videos = videos
-    }
-    #endif
 }

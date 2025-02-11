@@ -6,7 +6,7 @@ struct Video: Identifiable, Codable, Hashable {
     let userId: String?
     let videoURL: URL
     let thumbnailURL: URL?
-    let createdAt: Date  // This is what we're using for timestamp
+    let createdAt: Date
     var caption: String
     var likes: Int
     var comments: Int
@@ -33,7 +33,7 @@ struct Video: Identifiable, Codable, Hashable {
         case userId
         case videoURL
         case thumbnailURL
-        case createdAt = "timestamp"  // Map createdAt to timestamp in Firebase
+        case createdAt = "timestamp"
         case caption
         case likes
         case comments
@@ -42,50 +42,50 @@ struct Video: Identifiable, Codable, Hashable {
         case lastEditedAt
     }
 
-    // Custom encoding to handle Date conversion for Firebase
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(String.self, forKey: .id)
+        userId = try container.decodeIfPresent(String.self, forKey: .userId)
+        
+        // Handle video URL
+        let videoURLString = try container.decode(String.self, forKey: .videoURL)
+        guard let videoURL = URL(string: videoURLString) else {
+            throw DecodingError.dataCorruptedError(forKey: .videoURL,
+                  in: container,
+                  debugDescription: "Invalid URL string: \(videoURLString)")
+        }
+        self.videoURL = videoURL
+        
+        // Handle optional thumbnail URL
+        if let thumbnailURLString = try container.decodeIfPresent(String.self, forKey: .thumbnailURL) {
+            self.thumbnailURL = URL(string: thumbnailURLString)
+        } else {
+            self.thumbnailURL = nil
+        }
+        
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        caption = try container.decodeIfPresent(String.self, forKey: .caption) ?? ""
+        likes = try container.decodeIfPresent(Int.self, forKey: .likes) ?? 0
+        comments = try container.decodeIfPresent(Int.self, forKey: .comments) ?? 0
+        isDeleted = try container.decodeIfPresent(Bool.self, forKey: .isDeleted) ?? false
+        privacyLevel = try container.decodeIfPresent(PrivacyLevel.self, forKey: .privacyLevel) ?? .public
+        lastEditedAt = try container.decodeIfPresent(Date.self, forKey: .lastEditedAt)
+    }
+
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(userId, forKey: .userId)
         try container.encode(videoURL.absoluteString, forKey: .videoURL)
         try container.encode(thumbnailURL?.absoluteString, forKey: .thumbnailURL)
-        // Convert Date to milliseconds timestamp for Firebase
-        try container.encode(Int(createdAt.timeIntervalSince1970 * 1000), forKey: .createdAt)
+        try container.encode(createdAt, forKey: .createdAt)
         try container.encode(caption, forKey: .caption)
         try container.encode(likes, forKey: .likes)
         try container.encode(comments, forKey: .comments)
         try container.encode(isDeleted, forKey: .isDeleted)
         try container.encode(privacyLevel, forKey: .privacyLevel)
-        try container.encode(lastEditedAt?.timeIntervalSince1970, forKey: .lastEditedAt)
-    }
-
-    // Custom decoding to handle Firebase timestamp
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(String.self, forKey: .id)
-        userId = try container.decode(String?.self, forKey: .userId)
-        let videoURLString = try container.decode(String.self, forKey: .videoURL)
-        guard let videoURL = URL(string: videoURLString) else {
-            throw DecodingError.dataCorruptedError(forKey: .videoURL, in: container, debugDescription: "Invalid URL string")
-        }
-        self.videoURL = videoURL
-
-        if let thumbnailURLString = try container.decodeIfPresent(String.self, forKey: .thumbnailURL) {
-            thumbnailURL = URL(string: thumbnailURLString)
-        } else {
-            thumbnailURL = nil
-        }
-
-        // Handle timestamp from Firebase (milliseconds)
-        let timestamp = try container.decode(Int.self, forKey: .createdAt)
-        createdAt = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
-
-        caption = try container.decode(String.self, forKey: .caption)
-        likes = try container.decode(Int.self, forKey: .likes)
-        comments = try container.decode(Int.self, forKey: .comments)
-        isDeleted = try container.decode(Bool.self, forKey: .isDeleted)
-        privacyLevel = try container.decode(PrivacyLevel.self, forKey: .privacyLevel)
-        lastEditedAt = try container.decode(Date?.self, forKey: .lastEditedAt)
+        try container.encode(lastEditedAt, forKey: .lastEditedAt)
     }
 
     // Add direct initializer
@@ -102,8 +102,6 @@ struct Video: Identifiable, Codable, Hashable {
         self.privacyLevel = privacyLevel
         self.lastEditedAt = lastEditedAt
     }
-
-    // Add any other fields your upload is saving
 
     // Add hash function
     func hash(into hasher: inout Hasher) {

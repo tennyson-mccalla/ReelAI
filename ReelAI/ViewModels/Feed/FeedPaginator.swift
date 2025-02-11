@@ -1,93 +1,137 @@
-// Pagination logic and batch loading
-// ~80 lines
-
+import Foundation
 import FirebaseDatabase
 import FirebaseStorage
+import os
 
-final class FeedPaginator {
+@MainActor
+class FeedPaginator {
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "FeedPaginator")
+    private let storage = Storage.storage()
+    private let database: DatabaseReference
+    private var lastFetchedTimestamp: Date?
     private let batchSize = 10
-    private var retryCount = 0
-    private let maxRetries = 3
-    private var lastLoadedKey: String?
-    private let storage = Storage.storage().reference()
-
-    func fetchNextBatch(from database: DatabaseReference) async throws -> [Video] {
-        var query = database.child("videos")
-            .queryOrdered(byChild: "timestamp")
-            .queryLimited(toFirst: UInt(batchSize))
-
-        if let lastKey = lastLoadedKey {
-            query = query.queryStarting(afterValue: nil, childKey: lastKey)
-        }
-
-        return try await withCheckedThrowingContinuation { continuation in
-            query.observeSingleEvent(of: .value, with: { snapshot in
-                guard let videosDict = snapshot.value as? [String: [String: Any]] else {
-                    print("❌ No videos found or wrong data format. Raw value: \(String(describing: snapshot.value))")
-                    continuation.resume(throwing: NSError(
-                        domain: "FeedPaginator",
-                        code: 1,
-                        userInfo: [NSLocalizedDescriptionKey: "No videos found or invalid data format"]
-                    ))
-                    return
-                }
-
-                Task {
-                    do {
-                        let videos = try await self.processVideos(from: videosDict)
-                        if let lastChild = snapshot.children.allObjects.last as? DataSnapshot {
-                            self.lastLoadedKey = lastChild.key
-                        }
-                        continuation.resume(returning: videos)
-                    } catch {
-                        print("❌ Failed to process videos: \(error)")
-                        continuation.resume(throwing: error)
-                    }
-                }
-            })
-        }
+    
+    init() {
+        self.database = Database.database().reference()
     }
-
-    private func processVideos(from dict: [String: [String: Any]]) async throws -> [Video] {
-        var videos: [Video] = []
-
-        for (id, data) in dict {
-            do {
-                if let videoName = data["videoName"] as? String,
-                   let timestamp = data["timestamp"] as? TimeInterval {
-
-                    let videoRef = storage.child("videos/\(videoName)")
-                    let videoURL = try await videoRef.downloadURL()
-
-                    let thumbnailRef = storage.child("thumbnails/\(videoName)")
-                    let thumbnailURL = try? await thumbnailRef.downloadURL()
-
-                    let video = Video(
-                        id: id,
-                        userId: data["userId"] as? String,
-                        videoURL: videoURL,
-                        thumbnailURL: thumbnailURL,
-                        createdAt: Date(timeIntervalSince1970: timestamp / 1000),
-                        caption: data["caption"] as? String ?? "",
-                        likes: data["likes"] as? Int ?? 0,
-                        comments: data["comments"] as? Int ?? 0
-                    )
-                    videos.append(video)
-                } else {
-                    print("❌ Missing videoName or timestamp for video \(id)")
-                }
-            } catch {
-                print("❌ Failed to process video \(id): \(error.localizedDescription)")
-                continue
+    
+    func fetchNextBatch() async throws -> [Video] {
+        let videosRef = database.child("videos")
+        var query = videosRef.queryOrdered(byChild: "timestamp")
+        
+        if let lastTimestamp = lastFetchedTimestamp {
+            query = query.queryEnding(beforeValue: lastTimestamp.timeIntervalSince1970)
+        }
+        
+        query = query.queryLimited(toLast: UInt(batchSize))
+        let snapshot = try await query.getData()
+        
+        guard let value = snapshot.value as? [String: [String: Any]] else {
+            if snapshot.value == nil || snapshot.value is NSNull {
+                logger.debug("📭 No videos found in database")
+                return []
             }
+            throw NSError(domain: "FeedPaginator", 
+                         code: 1, 
+                         userInfo: [NSLocalizedDescriptionKey: "Invalid data structure in Firebase"])
         }
-
-        print("📊 Processed \(videos.count) valid videos out of \(dict.count) entries")
-        return videos.sorted(by: { $0.createdAt > $1.createdAt })
+        
+        logger.debug("📦 Processing \(value.count) video entries")
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        
+        let processedVideos = try await withThrowingTaskGroup(of: ProcessedVideoResult.self) { group in
+            // Spawn tasks
+            for (key, dict) in value {
+                group.addTask { [weak self] in
+                    guard let self = self else { 
+                        return .skipped(key) 
+                    }
+                    return try await self.processVideoEntry(key: key, dict: dict, decoder: decoder)
+                }
+            }
+            
+            // Collect results
+            var videos: [Video] = []
+            var skippedVideos: [String] = []
+            
+            for try await result in group {
+                switch result {
+                case .success(let video):
+                    videos.append(video)
+                case .skipped(let videoId):
+                    skippedVideos.append(videoId)
+                }
+            }
+            
+            if !skippedVideos.isEmpty {
+                logger.warning("⚠️ Skipped \(skippedVideos.count) videos: \(skippedVideos)")
+            }
+            
+            return videos.sorted { $0.createdAt > $1.createdAt }
+        }
+        
+        if !processedVideos.isEmpty {
+            lastFetchedTimestamp = processedVideos.last?.createdAt
+        }
+        
+        logger.debug("📼 Fetched \(processedVideos.count) videos")
+        return processedVideos
     }
-
-    func cleanup() {
-        retryCount = 0
-        lastLoadedKey = nil
+    
+    private enum ProcessedVideoResult {
+        case success(Video)
+        case skipped(String)
+    }
+    
+    private func processVideoEntry(key: String, dict: [String: Any], decoder: JSONDecoder) async throws -> ProcessedVideoResult {
+        var videoDict = dict
+        videoDict["id"] = key
+        
+        guard let videoName = videoDict["videoName"] as? String else {
+            logger.warning("❌ Missing videoName for video \(key)")
+            return .skipped(key)
+        }
+        
+        do {
+            let videoRef = storage.reference().child("videos/\(videoName)")
+            
+            // Check if video exists before attempting to download
+            do {
+                _ = try await videoRef.getMetadata()
+            } catch {
+                logger.error("❌ Video \(key) does not exist: \(error.localizedDescription)")
+                return .skipped(key)
+            }
+            
+            let url = try await videoRef.downloadURL()
+            videoDict["videoURL"] = url.absoluteString
+            
+            // Ensure timestamp exists and is a number
+            if let timestamp = videoDict["timestamp"] as? TimeInterval {
+                videoDict["timestamp"] = timestamp
+            } else {
+                videoDict["timestamp"] = Date().timeIntervalSince1970
+            }
+            
+            // Add default values for optional fields if missing
+            if videoDict["caption"] == nil { videoDict["caption"] = "" }
+            if videoDict["likes"] == nil { videoDict["likes"] = 0 }
+            if videoDict["comments"] == nil { videoDict["comments"] = 0 }
+            if videoDict["isDeleted"] == nil { videoDict["isDeleted"] = false }
+            if videoDict["privacyLevel"] == nil { videoDict["privacyLevel"] = "public" }
+            
+            let data = try JSONSerialization.data(withJSONObject: videoDict)
+            let video = try decoder.decode(Video.self, from: data)
+            return .success(video)
+        } catch {
+            logger.error("❌ Failed to process video \(key): \(error.localizedDescription)")
+            return .skipped(key)
+        }
+    }
+    
+    func reset() {
+        lastFetchedTimestamp = nil
     }
 }

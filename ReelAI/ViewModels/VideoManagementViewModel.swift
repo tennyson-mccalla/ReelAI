@@ -9,12 +9,18 @@ final class VideoManagementViewModel: ObservableObject {
     private let databaseManager: DatabaseManager
     private let logger: Logger
 
-    init(databaseManager: DatabaseManager = FirebaseDatabaseManager()) {
+    init(databaseManager: DatabaseManager) {
         self.databaseManager = databaseManager
         self.logger = Logger(
             subsystem: Bundle.main.bundleIdentifier ?? "ReelAI",
             category: "VideoManagement"
         )
+    }
+
+    // Convenience initializer that handles actor isolation
+    @MainActor
+    static func create() -> VideoManagementViewModel {
+        return VideoManagementViewModel(databaseManager: FirebaseDatabaseManager.shared)
     }
 
     func softDelete(_ video: Video) async {

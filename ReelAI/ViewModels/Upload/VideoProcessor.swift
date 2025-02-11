@@ -4,6 +4,7 @@
 import AVFoundation
 import UIKit
 
+@MainActor
 final class VideoProcessor {
     enum Quality {
         case high    // 1080p, 8Mbps
