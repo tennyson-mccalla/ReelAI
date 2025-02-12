@@ -1,12 +1,10 @@
 import Foundation
 import Network
 
-/// A class responsible for monitoring network connectivity and status changes.
-/// This class provides real-time updates about network availability and connection type.
 @MainActor
 class NetworkMonitor {
     /// Represents the current status of the network connection
-    enum NetworkStatus {
+    public enum NetworkStatus {
         /// Network is available and functioning
         case satisfied
         /// Network is unavailable

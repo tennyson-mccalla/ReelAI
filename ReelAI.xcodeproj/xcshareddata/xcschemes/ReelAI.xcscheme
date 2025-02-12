@@ -15,7 +15,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "4C87734F2D514B1F009D99EE"
+               BlueprintIdentifier = "4C4106832D5BA8C1006DC947"
                BuildableName = "ReelAI.app"
                BlueprintName = "ReelAI"
                ReferencedContainer = "container:ReelAI.xcodeproj">
@@ -68,7 +68,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "4C87734F2D514B1F009D99EE"
+            BlueprintIdentifier = "4C4106832D5BA8C1006DC947"
             BuildableName = "ReelAI.app"
             BlueprintName = "ReelAI"
             ReferencedContainer = "container:ReelAI.xcodeproj">
@@ -103,7 +103,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "4C87734F2D514B1F009D99EE"
+            BlueprintIdentifier = "4C4106832D5BA8C1006DC947"
             BuildableName = "ReelAI.app"
             BlueprintName = "ReelAI"
             ReferencedContainer = "container:ReelAI.xcodeproj">

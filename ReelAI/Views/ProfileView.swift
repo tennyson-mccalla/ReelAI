@@ -203,6 +203,7 @@ private extension ProfileView {
         let video: Video
         @Binding var selectedVideoForEdit: Video?
         @ObservedObject var viewModel: ProfileViewModel
+        @State private var isShowingVideo = false
         private let logger: Logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfileGridItem")
 
         var body: some View {
@@ -223,6 +224,13 @@ private extension ProfileView {
                             }
                         }
                     }
+                }
+                .onTapGesture {
+                    guard !video.isDeleted else { return }
+                    isShowingVideo = true
+                }
+                .navigationDestination(isPresented: $isShowingVideo) {
+                    VideoFeedView(initialVideo: video)
                 }
                 .contextMenu {
                     Button {
@@ -262,79 +270,29 @@ private extension ProfileView {
     private struct ProfilePhotoView: View {
         let photoURL: URL?
         let timestamp: Date
-        @State private var imageLoadError = false
-        @State private var isShowingPlaceholder = false
-        @State private var retryCount = 0
-        private let maxRetries = 3
-        private let retryDelay: TimeInterval = 1.0
-        private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfilePhotoView")
+        @State private var isLoading = true
 
         var body: some View {
-            Group {
-                if let url = photoURL {
-                    CachedAsyncImage(url: url, urlSession: .shared) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                                .onAppear {
-                                    isShowingPlaceholder = true
-                                    logger.debug("⏳ Showing loading indicator")
-                                }
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .onAppear {
-                                    isShowingPlaceholder = false
-                                    retryCount = 0
-                                    logger.debug("✅ Successfully loaded image")
-                                }
-                        case .failure(let error):
-                            fallbackImage
-                                .onAppear {
-                                    isShowingPlaceholder = true
-                                    logger.error("❌ Failed to load profile photo: \(error.localizedDescription)")
-                                    imageLoadError = true
-
-                                    // Attempt retry if under max attempts
-                                    if retryCount < maxRetries {
-                                        retryCount += 1
-                                        logger.debug("🔄 Attempting retry \(retryCount) of \(maxRetries)")
-
-                                        // Schedule retry after delay
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) {
-                                            // Force view refresh with new timestamp
-                                            NotificationCenter.default.post(
-                                                name: Notification.Name("ProfilePhotoUpdated"),
-                                                object: url
-                                            )
-                                        }
-                                    }
-                                }
-                        @unknown default:
-                            fallbackImage
-                                .onAppear {
-                                    isShowingPlaceholder = true
-                                }
-                        }
-                    }
-                    .id(url.absoluteString + timestamp.description + String(retryCount))
-                } else {
+            AsyncImage(url: photoURL) { phase in
+                switch phase {
+                case .empty:
                     fallbackImage
-                        .onAppear {
-                            isShowingPlaceholder = true
+                        .overlay {
+                            ProgressView()
+                                .scaleEffect(1.5)
                         }
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .transition(.opacity.animation(.easeInOut))
+                case .failure:
+                    fallbackImage
+                @unknown default:
+                    fallbackImage
                 }
             }
-            #if compiler(>=5.9)  // iOS 17 and later
-            .onChange(of: isShowingPlaceholder) { oldValue, newValue in
-                logger.debug("👁️ Placeholder state changed from: \(oldValue) to: \(newValue)")
-            }
-            #else  // iOS 16 and earlier
-            .onChange(of: isShowingPlaceholder) { newValue in
-                logger.debug("👁️ Placeholder state changed to: \(newValue)")
-            }
-            #endif
+            .id("\(photoURL?.absoluteString ?? "no-photo")-\(timestamp.timeIntervalSince1970)")
         }
 
         private var fallbackImage: some View {
@@ -342,43 +300,7 @@ private extension ProfileView {
                 .resizable()
                 .aspectRatio(contentMode: .fill)
                 .foregroundColor(.gray)
-        }
-    }
-
-    private struct CachedAsyncImage<Content: View>: View {
-        private let url: URL
-        private let urlSession: URLSession
-        private let content: (AsyncImagePhase) -> Content
-        @State private var phase: AsyncImagePhase = .empty
-        private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "CachedAsyncImage")
-
-        init(
-            url: URL,
-            urlSession: URLSession = .shared,
-            @ViewBuilder content: @escaping (AsyncImagePhase) -> Content
-        ) {
-            self.url = url
-            self.urlSession = urlSession
-            self.content = content
-        }
-
-        var body: some View {
-            content(phase)
-            .task {
-                logger.debug("🔄 Loading image from URL: \(url)")
-                do {
-                    let (data, _) = try await urlSession.data(from: url)
-                    if let uiImage = UIImage(data: data) {
-                        phase = .success(Image(uiImage: uiImage))
-                        logger.debug("✅ Successfully loaded image")
-                    } else {
-                        throw URLError(.cannotDecodeContentData)
-                    }
-                } catch {
-                    logger.error("❌ Failed to load image: \(error.localizedDescription)")
-                    phase = .failure(error)
-                }
-            }
+                .opacity(0.8)
         }
     }
 }

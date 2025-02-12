@@ -1,8 +1,14 @@
 {
   "rules": {
+    ".read": true,
+    ".write": "auth != null",
     "videos": {
       ".read": true,
       ".write": "auth != null"
+    },
+    "users": {
+      ".read": true,
+      ".write": "auth != null && auth.uid == data.child('id').val()"
     }
   }
 }

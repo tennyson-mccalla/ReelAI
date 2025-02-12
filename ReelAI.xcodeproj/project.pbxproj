@@ -15,13 +15,26 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		4C4106842D5BA8C1006DC947 /* reelAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = reelAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4C4106842D5BA8C1006DC947 /* ReelAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ReelAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4CBA39042D5C646800A09F5E /* Exceptions for "ReelAI" folder in "ReelAI" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4C4106832D5BA8C1006DC947 /* ReelAI */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		4C4106862D5BA8C1006DC947 /* reelAI */ = {
+		4C4106862D5BA8C1006DC947 /* ReelAI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = reelAI;
+			exceptions = (
+				4CBA39042D5C646800A09F5E /* Exceptions for "ReelAI" folder in "ReelAI" target */,
+			);
+			path = ReelAI;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -45,7 +58,7 @@
 		4C41067B2D5BA8C1006DC947 = {
 			isa = PBXGroup;
 			children = (
-				4C4106862D5BA8C1006DC947 /* reelAI */,
+				4C4106862D5BA8C1006DC947 /* ReelAI */,
 				4C4106852D5BA8C1006DC947 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -53,7 +66,7 @@
 		4C4106852D5BA8C1006DC947 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				4C4106842D5BA8C1006DC947 /* reelAI.app */,
+				4C4106842D5BA8C1006DC947 /* ReelAI.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -61,9 +74,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		4C4106832D5BA8C1006DC947 /* reelAI */ = {
+		4C4106832D5BA8C1006DC947 /* ReelAI */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 4C4106922D5BA8C2006DC947 /* Build configuration list for PBXNativeTarget "reelAI" */;
+			buildConfigurationList = 4C4106922D5BA8C2006DC947 /* Build configuration list for PBXNativeTarget "ReelAI" */;
 			buildPhases = (
 				4C4106802D5BA8C1006DC947 /* Sources */,
 				4C4106812D5BA8C1006DC947 /* Frameworks */,
@@ -74,9 +87,9 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				4C4106862D5BA8C1006DC947 /* reelAI */,
+				4C4106862D5BA8C1006DC947 /* ReelAI */,
 			);
-			name = reelAI;
+			name = ReelAI;
 			packageProductDependencies = (
 				4CBA33B22D5BADD000A09F5E /* FirebaseAuth */,
 				4CBA33B42D5BADD000A09F5E /* FirebaseCore */,
@@ -84,8 +97,8 @@
 				4CBA33B82D5BADD000A09F5E /* FirebaseFirestore */,
 				4CBA33BA2D5BADD000A09F5E /* FirebaseStorage */,
 			);
-			productName = reelAI;
-			productReference = 4C4106842D5BA8C1006DC947 /* reelAI.app */;
+			productName = ReelAI;
+			productReference = 4C4106842D5BA8C1006DC947 /* ReelAI.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -103,7 +116,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 4C41067F2D5BA8C1006DC947 /* Build configuration list for PBXProject "reelAI" */;
+			buildConfigurationList = 4C41067F2D5BA8C1006DC947 /* Build configuration list for PBXProject "ReelAI" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -120,7 +133,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				4C4106832D5BA8C1006DC947 /* reelAI */,
+				4C4106832D5BA8C1006DC947 /* ReelAI */,
 			);
 		};
 /* End PBXProject section */
@@ -198,6 +211,12 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_FILE = ReelAI/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
@@ -272,7 +291,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"reelAI/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"ReelAI/Preview Content\"";
 				DEVELOPMENT_TEAM = AT2HT9MT4G;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -286,7 +305,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ten.reelAI;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ten.reelai;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -305,7 +324,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"reelAI/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"ReelAI/Preview Content\"";
 				DEVELOPMENT_TEAM = AT2HT9MT4G;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -319,7 +338,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ten.reelAI;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ten.reelai;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -334,7 +353,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		4C41067F2D5BA8C1006DC947 /* Build configuration list for PBXProject "reelAI" */ = {
+		4C41067F2D5BA8C1006DC947 /* Build configuration list for PBXProject "ReelAI" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				4C4106902D5BA8C2006DC947 /* Debug */,
@@ -343,7 +362,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		4C4106922D5BA8C2006DC947 /* Build configuration list for PBXNativeTarget "reelAI" */ = {
+		4C4106922D5BA8C2006DC947 /* Build configuration list for PBXNativeTarget "ReelAI" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				4C4106932D5BA8C2006DC947 /* Debug */,

@@ -8,59 +8,57 @@ struct VideoUploadView: View {
     @State private var showingQualityPicker = false
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 20) {
-                    if viewModel.selectedVideoURLs.isEmpty {
-                        VideoPlaceholderView()
-                            .onTapGesture { showingPhotoPicker = true }
-                    } else {
-                        VStack(spacing: 15) {
-                            ForEach(viewModel.selectedVideoURLs, id: \.self) { url in
-                                VideoUploadItemView(
-                                    url: url,
-                                    thumbnail: viewModel.thumbnails[url],
-                                    caption: Binding(
-                                        get: { viewModel.captions[url] ?? "" },
-                                        set: { viewModel.captions[url] = $0 }
-                                    ),
-                                    uploadStatus: viewModel.uploadStatuses[url] ?? .pending,
-                                    onCancel: {
-                                        viewModel.cancelUpload(for: url)
-                                    }
-                                )
-                            }
+        ScrollView {
+            VStack(spacing: 20) {
+                if viewModel.selectedVideoURLs.isEmpty {
+                    VideoPlaceholderView()
+                        .onTapGesture { showingPhotoPicker = true }
+                } else {
+                    VStack(spacing: 15) {
+                        ForEach(viewModel.selectedVideoURLs, id: \.self) { url in
+                            VideoUploadItemView(
+                                url: url,
+                                thumbnail: viewModel.thumbnails[url],
+                                caption: Binding(
+                                    get: { viewModel.captions[url] ?? "" },
+                                    set: { viewModel.captions[url] = $0 }
+                                ),
+                                uploadStatus: viewModel.uploadStatuses[url] ?? .pending,
+                                onCancel: {
+                                    viewModel.cancelUpload(for: url)
+                                }
+                            )
                         }
-
-                        Text("Selected Videos: \(viewModel.selectedVideoURLs.count)")
-                            .foregroundColor(.secondary)
-                            .padding(.top, 5)
                     }
 
-                    UploadButton(
-                        isUploading: viewModel.isUploading,
-                        hasVideo: !viewModel.selectedVideoURLs.isEmpty,
-                        action: viewModel.uploadVideos
-                    )
-                    .padding(.horizontal)
-
-                    if let error = viewModel.errorMessage {
-                        Text(error)
-                            .foregroundColor(error.hasPrefix("✅") ? .green : .red)
-                            .padding()
-                    }
+                    Text("Selected Videos: \(viewModel.selectedVideoURLs.count)")
+                        .foregroundColor(.secondary)
+                        .padding(.top, 5)
                 }
-                .padding(.vertical)
+
+                UploadButton(
+                    isUploading: viewModel.isUploading,
+                    hasVideo: !viewModel.selectedVideoURLs.isEmpty,
+                    action: viewModel.uploadVideos
+                )
+                .padding(.horizontal)
+
+                if let error = viewModel.errorMessage {
+                    Text(error)
+                        .foregroundColor(error.hasPrefix("✅") ? .green : .red)
+                        .padding()
+                }
             }
-            .navigationTitle("Upload Videos")
-            .navigationDestination(isPresented: $viewModel.shouldNavigateToProfile) {
-                ProfileView()
-            }
-            .sheet(isPresented: $showingPhotoPicker) {
-                VideoPicker(selectedVideoURLs: $viewModel.selectedVideoURLs, viewModel: viewModel)
-            }
-            .disabled(viewModel.isUploading && !viewModel.shouldNavigateToProfile)
+            .padding(.vertical)
         }
+        .navigationTitle("Upload Videos")
+        .navigationDestination(isPresented: $viewModel.shouldNavigateToProfile) {
+            ProfileView()
+        }
+        .sheet(isPresented: $showingPhotoPicker) {
+            VideoPicker(selectedVideoURLs: $viewModel.selectedVideoURLs, viewModel: viewModel)
+        }
+        .disabled(viewModel.isUploading && !viewModel.shouldNavigateToProfile)
         .onChange(of: viewModel.shouldNavigateToProfile) { _, shouldNavigate in
             if shouldNavigate {
                 dismiss()
@@ -123,7 +121,7 @@ struct VideoUploadItemView: View {
                             }
                         }
                     }
-                case .completed(let _):
+                case .completed:
                     HStack {
                         Image(systemName: "checkmark.circle.fill")
                         Text("Uploaded")
@@ -136,6 +134,12 @@ struct VideoUploadItemView: View {
                             .lineLimit(2)
                     }
                     .foregroundColor(.red)
+                case .cancelled:
+                    HStack {
+                        Image(systemName: "xmark.circle.fill")
+                        Text("Upload cancelled")
+                    }
+                    .foregroundColor(.orange)
                 }
             }
             .frame(maxWidth: .infinity)

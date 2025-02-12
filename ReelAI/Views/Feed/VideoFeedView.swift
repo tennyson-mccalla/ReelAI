@@ -4,15 +4,19 @@ import os
 
 @MainActor
 struct VideoFeedView: View {
-    @StateObject private var viewModel = VideoFeedViewModel()
+    @StateObject private var viewModel: VideoFeedViewModel
     @State private var isMuted = true
     @GestureState private var dragOffset: CGFloat = 0
-    
+
+    init(initialVideo: Video? = nil) {
+        _viewModel = StateObject(wrappedValue: VideoFeedViewModel(initialVideo: initialVideo))
+    }
+
     var body: some View {
         GeometryReader { geometry in
             ZStack {
                 Color.black.edgesIgnoringSafeArea(.all)
-                
+
                 if let currentVideo = viewModel.currentVideo {
                     VideoPlayerView(video: currentVideo, isMuted: isMuted)
                         .offset(y: dragOffset)
@@ -26,26 +30,26 @@ struct VideoFeedView: View {
                                     let height = geometry.size.height
                                     let threshold = height * 0.25
                                     let velocity = value.predictedEndLocation.y - value.location.y
-                                    
+
                                     withAnimation(.easeInOut(duration: 0.3)) {
                                         if abs(value.translation.height) > threshold || abs(velocity) > 500 {
                                             if value.translation.height > 0 {
-                                                viewModel.moveToPrevious()
+                                                viewModel.moveToPreviousVideo()
                                             } else {
-                                                viewModel.moveToNext()
+                                                viewModel.moveToNextVideo()
                                             }
                                         }
                                     }
                                 }
                         )
                 }
-                
+
                 // Preload next video
                 if let nextVideo = viewModel.nextVideo {
                     VideoPlayerView(video: nextVideo, isMuted: isMuted, isPreloading: true)
                         .opacity(0)
                 }
-                
+
                 // UI Overlay
                 VStack {
                     HStack {
@@ -58,7 +62,7 @@ struct VideoFeedView: View {
                     }
                     Spacer()
                 }
-                
+
                 if viewModel.isLoading {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))

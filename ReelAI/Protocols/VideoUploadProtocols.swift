@@ -98,6 +98,8 @@ public enum UploadStatus {
     case completed(URL)
     /// Upload failed with an error
     case failed(Error)
+    /// Upload was cancelled by the user
+    case cancelled
 }
 
 /// Generates a thumbnail image from a video URL

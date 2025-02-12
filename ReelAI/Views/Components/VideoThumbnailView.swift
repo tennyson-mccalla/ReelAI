@@ -7,22 +7,28 @@ struct VideoThumbnailView: View {
     @State private var isLoading = true
     @State private var loadAttempt = 0
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "VideoThumbnailView")
-    
+
     var body: some View {
+        GeometryReader { geometry in
         ZStack {
             if let image = thumbnailImage {
                 Image(uiImage: image)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
+                        .aspectRatio(9/16, contentMode: .fill)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
             } else {
                 Rectangle()
                     .fill(Color.gray.opacity(0.3))
+                        .aspectRatio(9/16, contentMode: .fill)
             }
-            
+
             if isLoading {
                 ProgressView()
             }
         }
+        }
+        .aspectRatio(9/16, contentMode: .fit)
         .task(id: loadAttempt) {
             isLoading = true
             if let cached = await VideoCacheManager.shared.getCachedThumbnail(withIdentifier: video.id) {
@@ -36,11 +42,11 @@ struct VideoThumbnailView: View {
                         isLoading = false
                         return
                     }
-                    
+
                     // Cache the thumbnail
                     _ = try await VideoCacheManager.shared.cacheThumbnail(image, withIdentifier: video.id)
                     logger.debug("✅ Loaded and cached thumbnail")
-                    
+
                     thumbnailImage = image
                     isLoading = false
                 } catch {
@@ -60,12 +66,12 @@ struct VideoThumbnailView: View {
             }
         }
     }
-    
+
     private func loadThumbnail() async {
         guard thumbnailImage == nil else { return }
         let start = Date()
         logger.debug("🖼️ Loading thumbnail for video: \(video.id)")
-        
+
         // First try to get from cache
         if let cached = await VideoCacheManager.shared.getCachedThumbnail(withIdentifier: video.id) {
             logger.debug("✅ Loaded cached thumbnail in \(Date().timeIntervalSince(start))s")
@@ -77,7 +83,7 @@ struct VideoThumbnailView: View {
             }
             return
         }
-        
+
         // If not in cache, load from URL
         guard let thumbnailURL = video.thumbnailURL else {
             logger.error("❌ No thumbnail URL for video: \(video.id)")
@@ -86,7 +92,7 @@ struct VideoThumbnailView: View {
             }
             return
         }
-        
+
         do {
             let (data, _) = try await URLSession.shared.data(from: thumbnailURL)
             guard let image = UIImage(data: data) else {
@@ -96,11 +102,11 @@ struct VideoThumbnailView: View {
                 }
                 return
             }
-            
+
             // Cache the thumbnail
             _ = try await VideoCacheManager.shared.cacheThumbnail(image, withIdentifier: video.id)
             logger.debug("✅ Loaded and cached thumbnail in \(Date().timeIntervalSince(start))s")
-            
+
             await MainActor.run {
                 withAnimation {
                     thumbnailImage = image

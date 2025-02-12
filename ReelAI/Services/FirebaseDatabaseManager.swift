@@ -144,10 +144,10 @@ final class FirebaseDatabaseManager: DatabaseManager {
 
     @MainActor
     func updateProfile(_ profile: UserProfile) async throws {
-        // Create Sendable update data
         let updateData = ProfileUpdateData(from: profile)
         let update = DatabaseUpdate(path: "users/\(profile.id)", value: updateData)
         let dict = try convertToDict(update.value)
+
         do {
             try await db.child(update.path).updateChildValues(dict)
         } catch {
@@ -164,19 +164,22 @@ final class FirebaseDatabaseManager: DatabaseManager {
                 throw DatabaseError.invalidData
             }
 
-            // Since we're already on the main actor, we can do this directly
             // Ensure all required fields exist with defaults
             data["id"] = userId
             if data["displayName"] == nil { data["displayName"] = "New User" }
             if data["bio"] == nil { data["bio"] = "" }
             if data["socialLinks"] == nil { data["socialLinks"] = [] }
 
-            // Explicitly handle photoURL
-            if let photoURLString = data["photoURL"] as? String {
-                data["photoURL"] = photoURLString
-                print("🔍 Fetched Photo URL from Database: \(photoURLString)")
+            // Handle photoURL
+            if data["photoURL"] is String {
+                let photoRef = Storage.storage().reference().child("profile_photos/\(userId)/profile.jpg")
+                do {
+                    let freshURL = try await photoRef.downloadURL()
+                    data["photoURL"] = freshURL.absoluteString
+                } catch {
+                    data["photoURL"] = NSNull()
+                }
             } else {
-                print("⚠️ No Photo URL found in database")
                 data["photoURL"] = NSNull()
             }
 

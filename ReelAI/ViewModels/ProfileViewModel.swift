@@ -150,10 +150,32 @@ class ProfileViewModel: ObservableObject {
         do {
             let updatedProfile = try await profileManager.loadProfile()
             logger.debug("✅ Loaded updated profile with photo URL: \(String(describing: updatedProfile.photoURL))")
+
+            // If no photo URL exists, create a default one
+            if updatedProfile.photoURL == nil {
+                logger.debug("⚠️ No photo URL found, creating default profile photo")
+                if let defaultImageData = UIImage(systemName: "person.circle.fill")?.jpegData(compressionQuality: 0.8) {
+                    try await updateProfilePhoto(defaultImageData)
+                    return
+                }
+            }
+
             await updateProfile(with: updatedProfile)
         } catch {
             logger.error("❌ Failed to refresh profile photo: \(error.localizedDescription)")
         }
+    }
+
+    // Helper method to update profile photo
+    private func updateProfilePhoto(_ imageData: Data) async throws {
+        guard let userId = authService.currentUser?.uid else { return }
+
+        let url = try await storageManager.uploadProfilePhoto(imageData, userId: userId)
+        var updatedProfile = profile
+        updatedProfile.photoURL = url
+        try await databaseManager.updateProfile(updatedProfile)
+
+        await updateProfile(with: updatedProfile)
     }
 
     // MARK: - Video Management

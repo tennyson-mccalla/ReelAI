@@ -13,10 +13,10 @@ final class EditProfileViewModel: ObservableObject {
     private let authService: FirebaseAuthService
     private let databaseManager: DatabaseManager
 
-    init(profile: UserProfile, 
-         storage: StorageManager, 
-         database: DatabaseManager, 
-         authService: FirebaseAuthService, 
+    init(profile: UserProfile,
+         storage: StorageManager,
+         database: DatabaseManager,
+         authService: FirebaseAuthService,
          databaseManager: DatabaseManager) {
         self.profile = profile
         self.storage = storage
@@ -35,11 +35,12 @@ final class EditProfileViewModel: ObservableObject {
                 throw ValidationError.displayNameTooShort
             }
 
-            print("📝 Updating profile: \(profile)")
-            try await database.updateProfile(profile)
-            print("✅ Profile update successful")
+            // Update profile in database
+            try await databaseManager.updateProfile(profile)
+
+            // Force a sync to ensure we have latest data
+            try await forceSyncProfile()
         } catch {
-            print("❌ Profile update failed: \(error)")
             self.error = error
             throw error
         }
@@ -47,7 +48,6 @@ final class EditProfileViewModel: ObservableObject {
 
     func updateProfilePhoto(_ imageData: Data) async throws {
         guard let userId = authService.currentUser?.uid else {
-            print("❌ No user ID")
             throw ProfileError.notAuthenticated
         }
 
@@ -55,50 +55,37 @@ final class EditProfileViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            print("📸 Uploading profile photo")
-            print("📊 Image data size: \(imageData.count) bytes")
-            
-            let url = try await storage.uploadProfilePhoto(imageData, userId: userId)
-            
-            print("🖼️ Photo uploaded successfully")
-            print("📍 Photo URL: \(url)")
-            
-            // Immediately update the local profile with the new photo URL
-            await MainActor.run {
-                self.profile.photoURL = url
+            // Delete existing photo first
+            if profile.photoURL != nil {
+                try? await storage.deleteFile(at: "profile_photos/\(userId)/profile.jpg")
             }
-            
-            // Update profile in database
+
+            // Upload new photo
+            let url = try await storage.uploadProfilePhoto(imageData, userId: userId)
+
+            // Update profile with new URL
             var updatedProfile = profile
             updatedProfile.photoURL = url
-            
             try await databaseManager.updateProfile(updatedProfile)
-            
-            // Force a reload of the profile
-            print("🔄 Forcing profile reload")
-            try? await forceSyncProfile()
+
+            // Update local state
+            await MainActor.run {
+                self.profile = updatedProfile
+            }
+
+            // Force a sync to ensure we have latest data
+            try await forceSyncProfile()
         } catch {
-            print("❌ Profile photo update failed: \(error)")
-            print("- Error details: \(error.localizedDescription)")
             self.error = error
             throw error
         }
     }
-    
+
     private func forceSyncProfile() async throws {
         guard let userId = authService.currentUser?.uid else { return }
-        
-        do {
-            let freshProfile = try await databaseManager.fetchProfile(userId: userId)
-            
-            await MainActor.run {
-                print("🔄 Synced Profile:")
-                print("- New Photo URL: \(freshProfile.photoURL?.absoluteString ?? "nil")")
-                self.profile = freshProfile
-            }
-        } catch {
-            print("❌ Failed to sync profile: \(error)")
-            throw error
+        let freshProfile = try await databaseManager.fetchProfile(userId: userId)
+        await MainActor.run {
+            self.profile = freshProfile
         }
     }
 

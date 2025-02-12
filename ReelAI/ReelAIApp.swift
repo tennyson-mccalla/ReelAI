@@ -36,7 +36,6 @@ struct ReelAIApp: App {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ReelAIApp")
 
     init() {
-        logger.debug("🚀 Initializing app")
         // Configure tab bar appearance
         let appearance = UITabBarAppearance()
         appearance.configureWithDefaultBackground()

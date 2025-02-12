@@ -15,6 +15,16 @@ public struct VideoPicker: UIViewControllerRepresentable {
     }
 
     public func makeUIViewController(context: Context) -> PHPickerViewController {
+        Task {
+            // Request permissions before showing picker
+            let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            if status != .authorized {
+                await MainActor.run {
+                    self.viewModelWrapper.setError(.videoProcessingFailed(reason: "Photo library access is required to select videos"))
+                }
+            }
+        }
+
         var configuration = PHPickerConfiguration(photoLibrary: .shared())
         configuration.filter = .videos
         configuration.selectionLimit = 0 // Allow multiple selections
@@ -53,23 +63,17 @@ public struct VideoPicker: UIViewControllerRepresentable {
             picker.dismiss(animated: true)
             print("📱 VideoPicker: Finished picking, results count: \(results.count)")
 
+            // Handle cancellation without showing error
             guard !results.isEmpty else {
-                print("❌ VideoPicker: No videos selected")
-                self.parent.viewModelWrapper.setError(.videoProcessingFailed(reason: "No videos selected"))
+                print("ℹ️ VideoPicker: Selection cancelled or no videos selected")
                 return
             }
 
             Task {
                 do {
-                    // Request photo library access
-                    let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-                    guard status == .authorized else {
-                        throw NSError(domain: "VideoPicker", code: -1, userInfo: [NSLocalizedDescriptionKey: "Photo library access denied"])
-                    }
-
                     var processedURLs: [(Int, URL)] = []
 
-                    // Process videos sequentially to avoid any race conditions
+                    // Process videos sequentially to avoid race conditions
                     for (index, result) in results.enumerated() {
                         print("🎬 Processing video \(index + 1) of \(results.count)")
 
@@ -124,13 +128,6 @@ public struct VideoPicker: UIViewControllerRepresentable {
                             throw NSError(domain: "VideoPicker", code: -1, userInfo: [NSLocalizedDescriptionKey: "File verification failed"])
                         }
 
-                        // Get file size for logging
-                        let attributes = try fileManager.attributesOfItem(atPath: destinationURL.path)
-                        guard let fileSize = attributes[.size] as? Int64 else {
-                            throw NSError(domain: "VideoPicker", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not read file size"])
-                        }
-                        print("📊 Copied file size: \(Float(fileSize) / 1_000_000)MB")
-
                         processedURLs.append((index, destinationURL))
                         print("✅ Successfully processed video \(index)")
                     }
@@ -144,16 +141,8 @@ public struct VideoPicker: UIViewControllerRepresentable {
                         }
 
                         print("📱 VideoPicker: Successfully processed \(selectedVideoURLs.count) videos")
-                        print("📁 Video locations:")
-                        selectedVideoURLs.forEach { url in
-                            print("   - \(url.path)")
-                            if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) {
-                                print("     Size: \(Float(attrs[.size] as? Int64 ?? 0) / 1_000_000)MB")
-                            }
-                        }
                         self.parent.selectedVideoURLs = selectedVideoURLs
                         self.parent.viewModelWrapper.setSelectedVideos(urls: selectedVideoURLs)
-                        self.parent.viewModelWrapper.uploadVideos()
                     }
                 } catch {
                     print("❌ Error processing videos: \(error.localizedDescription)")

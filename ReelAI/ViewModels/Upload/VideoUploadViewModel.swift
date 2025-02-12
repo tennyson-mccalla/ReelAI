@@ -7,6 +7,15 @@ import CoreMedia
 import Network
 import UIKit
 import Foundation
+import os
+
+// MARK: - Network Types
+public enum NetworkStatus {
+    case satisfied
+    case unsatisfied
+    case requiresConnection
+    case unknown
+}
 
 @MainActor
 final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol {
@@ -25,8 +34,12 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
     @Published var uploadedVideoURLs: [URL] = []
     @Published var uploadStatuses: [URL: UploadStatus] = [:]
     @Published var thumbnails: [URL: UIImage] = [:]
-    @Published var networkStatus: NetworkMonitor.NetworkStatus = .unknown
+    @Published private(set) var networkStatus: NetworkMonitor.NetworkStatus = .unknown
     @Published var captions: [URL: String] = [:]
+    @Published var successMessage: String?
+
+    // MARK: - Private Properties
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "VideoUploadViewModel")
 
     // MARK: - Dependencies
     private let networkMonitor = NetworkMonitor.shared
@@ -64,60 +77,151 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
     }
 
     public func setError(_ error: PublicUploadError) {
-        errorMessage = error.localizedDescription
+        switch error {
+        case .videoProcessingFailed(let reason):
+            errorMessage = "Failed to process video: \(reason)"
+        case .networkUnavailable:
+            errorMessage = "Network is unavailable"
+        case .storageError:
+            errorMessage = "Storage error occurred"
+        case .networkError:
+            errorMessage = "Network error occurred"
+        case .unknownError:
+            errorMessage = "An unknown error occurred"
+        }
     }
 
-    public func uploadVideos() {
-        guard !selectedVideoURLs.isEmpty else {
-            setError(.videoProcessingFailed(reason: "No videos selected"))
-            return
-        }
-
-        guard networkMonitor.isConnected else {
-            setError(.networkUnavailable)
-            return
-        }
-
+    @MainActor
+    func uploadVideos() {
         Task {
-            self.isUploading = true
+            guard !selectedVideoURLs.isEmpty else {
+                setError(.videoProcessingFailed(reason: "No videos selected"))
+                return
+            }
 
-            do {
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    for url in selectedVideoURLs {
-                        group.addTask {
-                            try await self.uploadSingleVideo(url)
+            guard NetworkMonitor.shared.isConnected else {
+                setError(.networkUnavailable)
+                return
+            }
+
+            var successCount = 0
+            var failedCount = 0
+
+            for (index, url) in selectedVideoURLs.enumerated() {
+                if case .cancelled = uploadStatuses[url] {
+                    continue
+                }
+
+                // Update UI to show we're processing this video
+                uploadStatuses[url] = .uploading(progress: 0.0)
+
+                var encounteredError: Error?
+                // Process and upload video in background
+                await withTaskGroup(of: Result<URL, Error>.self) { group in
+                    group.addTask { [self] in
+                        do {
+                            await MainActor.run {
+                                uploadStatuses[url] = .uploading(progress: 0.0)
+                            }
+                            let _ = try await processAndUploadVideo(at: url, index: index)
+                            if let downloadURL = await uploadedVideoURLs.last {
+                                return .success(downloadURL)
+                            } else {
+                                return .failure(PublicUploadError.unknownError)
+                            }
+                        } catch {
+                            await MainActor.run {
+                                uploadStatuses[url] = .failed(error)
+                                logger.error("Failed to upload video: \(error.localizedDescription)")
+                            }
+                            return .failure(error)
                         }
                     }
-                    try await group.waitForAll()
+
+                    // Wait for task completion and handle result
+                    for await result in group {
+                        switch result {
+                        case .success(let downloadURL):
+                            await MainActor.run {
+                                successCount += 1
+                                uploadStatuses[url] = .completed(downloadURL)
+                            }
+                        case .failure(let error):
+                            await MainActor.run {
+                                failedCount += 1
+                                uploadStatuses[url] = .failed(error)
+                                logger.error("Failed to upload video: \(error.localizedDescription)")
+                            }
+                            encounteredError = error
+                        }
+                    }
                 }
 
-                await MainActor.run {
-                    self.uploadComplete = true
-                    self.isUploading = false
+                if encounteredError != nil {
+                    break
                 }
-            } catch {
-                await MainActor.run {
-                    self.setError(.videoProcessingFailed(reason: error.localizedDescription))
-                    self.isUploading = false
+            }
+
+            // Only navigate if we had at least one successful upload
+            if successCount > 0 {
+                // Clear successful uploads but keep failed ones
+                selectedVideoURLs = selectedVideoURLs.filter { url in
+                    if case .failed = uploadStatuses[url] {
+                        return true
+                    }
+                    return false
                 }
+                thumbnails = thumbnails.filter { url, _ in
+                    if case .failed = uploadStatuses[url] {
+                        return true
+                    }
+                    return false
+                }
+                captions = captions.filter { url, _ in
+                    if case .failed = uploadStatuses[url] {
+                        return true
+                    }
+                    return false
+                }
+                uploadStatuses = uploadStatuses.filter { url, status in
+                    if case .failed = status {
+                        return true
+                    }
+                    return false
+                }
+
+                // Set success message and navigate
+                let message = successCount == 1 ? "Video uploaded successfully!" :
+                             "Successfully uploaded \(successCount) videos!"
+                successMessage = message
+                shouldNavigateToProfile = true
+            }
+
+            // Reset Create tab state if all uploads completed
+            if failedCount == 0 {
+                resetState()
             }
         }
     }
 
     @MainActor
-    private func uploadSingleVideo(_ url: URL) async throws {
-        uploadStatuses[url] = .uploading(progress: 0)
+    private func processAndUploadVideo(at url: URL, index: Int) async throws {
+        uploadStatuses[url] = .uploading(progress: 0.0)
 
         do {
             let processedURL = try await videoProcessor.compressVideo(at: url, quality: mapQuality(selectedQuality))
             let videoName = "\(UUID().uuidString)".replacingOccurrences(of: "-", with: "")
 
             // Upload video with progress tracking
-            let downloadURL = try await storageManager.uploadVideo(processedURL, name: videoName) { progress in
-                Task { @MainActor in
-                    self.uploadStatuses[url] = .uploading(progress: progress)
+            let downloadURL = try await storageManager.uploadVideo(
+                processedURL,
+                name: videoName,
+                progressHandler: { progress in
+                    Task { @MainActor in
+                        self.uploadStatuses[url] = .uploading(progress: progress)
+                    }
                 }
-            }
+            )
 
             var thumbnailURL: URL?
             if let thumbnailImage = thumbnails[url],
@@ -143,6 +247,7 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
             uploadedVideoURLs.append(downloadURL)
 
         } catch {
+            logger.error("Failed to process and upload video: \(error.localizedDescription)")
             uploadStatuses[url] = .failed(error)
             throw error
         }
@@ -152,7 +257,7 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
     func cancelUpload(for url: URL) {
         // Cancel the specific upload task
         storageManager.cancelUpload(for: url)
-        uploadStatuses[url] = .failed(NSError(domain: "Upload", code: -1, userInfo: [NSLocalizedDescriptionKey: "Upload cancelled"]))
+        uploadStatuses[url] = .cancelled
     }
 
     func cancelUpload() {
@@ -212,6 +317,30 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
                     continuation.resume(returning: nil)
                 }
             }
+        }
+    }
+
+    private func resetState() {
+        // Implementation of resetState method
+    }
+}
+
+// Add Equatable conformance for UploadStatus
+extension UploadStatus: Equatable {
+    public static func == (lhs: UploadStatus, rhs: UploadStatus) -> Bool {
+        switch (lhs, rhs) {
+        case (.pending, .pending):
+            return true
+        case let (.uploading(p1), .uploading(p2)):
+            return p1 == p2
+        case let (.completed(url1), .completed(url2)):
+            return url1 == url2
+        case let (.failed(e1), .failed(e2)):
+            return e1.localizedDescription == e2.localizedDescription
+        case (.cancelled, .cancelled):
+            return true
+        default:
+            return false
         }
     }
 }

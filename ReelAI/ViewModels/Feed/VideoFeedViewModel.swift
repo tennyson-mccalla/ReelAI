@@ -2,7 +2,6 @@ import Foundation
 import FirebaseDatabase
 import os
 import SwiftUI
-import Network
 
 @MainActor
 class VideoFeedViewModel: ObservableObject {
@@ -11,7 +10,6 @@ class VideoFeedViewModel: ObservableObject {
     @Published private(set) var nextVideo: Video?
     @Published private(set) var isLoading = false
     @Published private(set) var error: String?
-    @Published private(set) var networkStatus: NetworkMonitor.NetworkStatus = .unknown
     @Published var transitionProgress: Double = 0
 
     private var videos: [Video] = []
@@ -19,49 +17,47 @@ class VideoFeedViewModel: ObservableObject {
     private let paginator: FeedPaginator
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "VideoFeedViewModel")
     private var isPreloadingMore = false
-    private let networkMonitor = NetworkMonitor.shared
     private var retryCount = 0
     private let maxRetries = 3
+    private let initialVideo: Video?
 
-    init(paginator: FeedPaginator? = nil) {
+    init(paginator: FeedPaginator? = nil, initialVideo: Video? = nil) {
         self.paginator = paginator ?? FeedPaginator()
-        setupNetworkMonitoring()
-    }
+        self.initialVideo = initialVideo
 
-    private func setupNetworkMonitoring() {
-        networkMonitor.startMonitoring { [weak self] status in
-            guard let self = self else { return }
-
-            Task { @MainActor in
-                // Update status and check if we need to load videos
-                self.networkStatus = status
-
-                // Only start loading if we have no videos
-                let shouldLoad = status == .satisfied && self.videos.isEmpty
-                if shouldLoad {
-                    await self.loadVideos()
-                }
-            }
+        // Start loading videos immediately - Firebase will handle offline state
+        Task {
+            logger.debug("🚀 Initializing VideoFeedViewModel")
+            await loadVideos()
         }
     }
 
     func loadVideos() async {
-        guard networkStatus == .satisfied else {
-            error = "No network connection"
-            return
-        }
-
+        logger.debug("📥 Starting video load")
         isLoading = true
         error = nil
 
         do {
             videos = try await fetchVideosWithRetry()
-            if !videos.isEmpty {
+
+            if let initialVideo = initialVideo {
+                // If we have an initial video, find its index
+                if let index = videos.firstIndex(where: { $0.id == initialVideo.id }) {
+                    currentIndex = index
+                } else {
+                    // If the initial video isn't in the current batch, add it
+                    videos.insert(initialVideo, at: 0)
+                    currentIndex = 0
+                }
+            } else if !videos.isEmpty {
                 currentIndex = 0
-                updateVideoViews()
-                preloadNextBatchIfNeeded()
-            } else {
-                error = "No videos found"
+            }
+
+            updateVideoViews()
+            preloadNextBatchIfNeeded()
+
+            if videos.isEmpty {
+                error = "No videos available"
             }
         } catch {
             handleLoadError(error)
@@ -109,30 +105,39 @@ class VideoFeedViewModel: ObservableObject {
         )
     }
 
-    func moveToNext() {
+    private func updateVideoViews() {
+        guard !videos.isEmpty else { return }
+
+        // Ensure currentIndex is within bounds
+        currentIndex = max(0, min(currentIndex, videos.count - 1))
+        currentVideo = videos[currentIndex]
+
+        // Update previous and next videos if available
+        previousVideo = currentIndex > 0 ? videos[currentIndex - 1] : nil
+        nextVideo = currentIndex < videos.count - 1 ? videos[currentIndex + 1] : nil
+
+        // Preload next video if available
+        if let next = nextVideo {
+            preloadVideo(next)
+        }
+    }
+
+    func moveToNextVideo() {
         guard currentIndex < videos.count - 1 else { return }
         currentIndex += 1
         updateVideoViews()
-        preloadNextBatchIfNeeded()
     }
 
-    func moveToPrevious() {
+    func moveToPreviousVideo() {
         guard currentIndex > 0 else { return }
         currentIndex -= 1
         updateVideoViews()
     }
 
-    private func updateVideoViews() {
-        currentVideo = videos[currentIndex]
-        previousVideo = videos[safe: currentIndex - 1]
-        nextVideo = videos[safe: currentIndex + 1]
-    }
-
     private func preloadNextBatchIfNeeded() {
         guard !isPreloadingMore,
               currentIndex >= videos.count - 3,
-              !videos.isEmpty,
-              networkStatus == .satisfied else { return }
+              !videos.isEmpty else { return }
 
         Task {
             isPreloadingMore = true
@@ -149,11 +154,7 @@ class VideoFeedViewModel: ObservableObject {
         }
     }
 
-    deinit {
-        // Avoid capturing self in the deinit Task
-        let monitor = networkMonitor
-        Task {
-            await monitor.stopMonitoring()
-        }
+    private func preloadVideo(_ video: Video) {
+        // Implementation of preloadVideo method
     }
 }

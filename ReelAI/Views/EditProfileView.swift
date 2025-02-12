@@ -102,19 +102,34 @@ private struct PhotoSelectorButton: View {
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .bottomTrailing) {
-                // Use AsyncImage with cache-busting technique
-                AsyncImage(url: photoWithTimestamp) { image in
-                    image.resizable()
-                         .aspectRatio(contentMode: .fill)
-                         .frame(width: 120, height: 120)
-                         .clipShape(Circle())
-                } placeholder: {
-                    Image(systemName: "person.circle.fill")
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 120, height: 120)
-                        .foregroundColor(.gray)
+                AsyncImage(url: photoURL) { phase in
+                    switch phase {
+                    case .empty:
+                        Image(systemName: "person.circle.fill")
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 120, height: 120)
+                            .foregroundColor(.gray)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 120, height: 120)
+                    case .failure:
+                        Image(systemName: "person.circle.fill")
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 120, height: 120)
+                            .foregroundColor(.gray)
+                    @unknown default:
+                        Image(systemName: "person.circle.fill")
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 120, height: 120)
+                            .foregroundColor(.gray)
+                    }
                 }
+                .clipShape(Circle())
 
                 if isLoading {
                     ProgressView()
@@ -133,20 +148,6 @@ private struct PhotoSelectorButton: View {
                 }
             }
         }
-    }
-
-    // Add a timestamp to force image refresh
-    private var photoWithTimestamp: URL? {
-        guard let photoURL = photoURL,
-              var urlComponents = URLComponents(url: photoURL, resolvingAgainstBaseURL: false) else {
-            return photoURL
-        }
-
-        // Add a timestamp query parameter to force refresh
-        let timestampQuery = URLQueryItem(name: "timestamp", value: "\(Date().timeIntervalSince1970)")
-        urlComponents.queryItems = (urlComponents.queryItems ?? []) + [timestampQuery]
-
-        return urlComponents.url
     }
 }
 

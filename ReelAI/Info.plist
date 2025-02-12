@@ -2,14 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Add these keys -->
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>We need access to your photo library to upload videos.</string>
+    <string>ReelAI needs access to your photo library to upload and share videos.</string>
     <key>NSCameraUsageDescription</key>
-    <string>We need access to your camera to record videos.</string>
+    <string>ReelAI needs access to your camera to record videos.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>We need access to your microphone to record video audio.</string>
-    <!-- <key>CFBundleIcons</key>
+    <string>ReelAI needs access to your microphone to record video audio.</string>
+    <key>CFBundleIcons</key>
     <dict>
         <key>CFBundlePrimaryIcon</key>
         <dict>
@@ -20,6 +19,6 @@
                 <string>AppIcon</string>
             </array>
         </dict>
-    </dict> -->
+    </dict>
 </dict>
 </plist>
