@@ -13,6 +13,7 @@ import os
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "AppDelegate")
+    private var connectedRef: DatabaseReference?
 
     func application(
         _ application: UIApplication,
@@ -21,10 +22,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         logger.debug("🚀 Starting app initialization")
 
         // 1. Configure Firebase
-        guard configureFirebase() else {
-            logger.error("🔴 Failed to configure Firebase")
-            return false
-        }
+        configureFirebase()
         logger.debug("✅ Firebase configured")
 
         // 2. Initialize auth service which sets up persistence
@@ -34,35 +32,31 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // 3. Set up offline capabilities
         Database.database().goOnline()
 
-        // 4. Add state change listener
+        // 4. Add connection state monitoring
         setupConnectionStateMonitoring()
 
         logger.debug("✅ App initialization complete")
         return true
     }
 
-    private func configureFirebase() -> Bool {
-        do {
-            FirebaseApp.configure()
-            return true
-        } catch {
-            logger.error("🔴 Firebase configuration failed: \(error.localizedDescription)")
-            return false
-        }
+    private func configureFirebase() {
+        FirebaseApp.configure()
     }
 
     private func setupConnectionStateMonitoring() {
-        Database.database().addServiceStateObserver { [weak self] state in
-            guard let self = self else { return }
-            switch state {
-            case .online:
+        // Get a reference to the special .info/connected path
+        connectedRef = Database.database()
+            .reference(withPath: ".info/connected")
+
+        // Observe connection state changes
+        connectedRef?.observe(.value) { [weak self] snapshot in
+            guard let self = self,
+                  let connected = snapshot.value as? Bool else { return }
+
+            if connected {
                 self.logger.debug("💚 Firebase connection: Online")
-            case .offline:
+            } else {
                 self.logger.debug("🔸 Firebase connection: Offline")
-            case .restricted:
-                self.logger.error("🔴 Firebase connection: Restricted")
-            @unknown default:
-                self.logger.error("⚠️ Firebase connection: Unknown state")
             }
         }
     }
@@ -75,6 +69,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func applicationWillEnterForeground(_ application: UIApplication) {
         Database.database().goOnline()
         logger.debug("📱 App entered foreground - Firebase connection restored")
+    }
+
+    deinit {
+        // Clean up connection observer
+        connectedRef?.removeAllObservers()
     }
 }
 
