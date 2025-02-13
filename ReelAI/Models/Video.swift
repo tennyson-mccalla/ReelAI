@@ -44,10 +44,10 @@ struct Video: Identifiable, Codable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        
+
         id = try container.decode(String.self, forKey: .id)
         userId = try container.decodeIfPresent(String.self, forKey: .userId)
-        
+
         // Handle video URL
         let videoURLString = try container.decode(String.self, forKey: .videoURL)
         guard let videoURL = URL(string: videoURLString) else {
@@ -56,14 +56,14 @@ struct Video: Identifiable, Codable, Hashable {
                   debugDescription: "Invalid URL string: \(videoURLString)")
         }
         self.videoURL = videoURL
-        
+
         // Handle optional thumbnail URL
         if let thumbnailURLString = try container.decodeIfPresent(String.self, forKey: .thumbnailURL) {
             self.thumbnailURL = URL(string: thumbnailURLString)
         } else {
             self.thumbnailURL = nil
         }
-        
+
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         caption = try container.decodeIfPresent(String.self, forKey: .caption) ?? ""
         likes = try container.decodeIfPresent(Int.self, forKey: .likes) ?? 0
@@ -112,6 +112,51 @@ struct Video: Identifiable, Codable, Hashable {
     static func == (lhs: Video, rhs: Video) -> Bool {
         lhs.id == rhs.id
     }
+
+    // Add dictionary initializer for Firebase
+    init(dictionary: [String: Any]) throws {
+        guard let id = dictionary["id"] as? String,
+              let videoURLString = dictionary["videoURL"] as? String,
+              let videoURL = URL(string: videoURLString) else {
+            throw VideoError.invalidData
+        }
+
+        self.id = id
+        self.userId = dictionary["userId"] as? String
+        self.videoURL = videoURL
+
+        if let thumbnailURLString = dictionary["thumbnailURL"] as? String {
+            self.thumbnailURL = URL(string: thumbnailURLString)
+        } else {
+            self.thumbnailURL = nil
+        }
+
+        if let timestamp = dictionary["timestamp"] as? TimeInterval {
+            self.createdAt = Date(timeIntervalSince1970: timestamp / 1000)
+        } else if let timestamp = dictionary["createdAt"] as? TimeInterval {
+            self.createdAt = Date(timeIntervalSince1970: timestamp / 1000)
+        } else {
+            self.createdAt = Date()
+        }
+
+        self.caption = dictionary["caption"] as? String ?? ""
+        self.likes = dictionary["likes"] as? Int ?? 0
+        self.comments = dictionary["comments"] as? Int ?? 0
+        self.isDeleted = dictionary["isDeleted"] as? Bool ?? false
+
+        if let privacyString = dictionary["privacyLevel"] as? String,
+           let privacy = PrivacyLevel(rawValue: privacyString) {
+            self.privacyLevel = privacy
+        } else {
+            self.privacyLevel = .public
+        }
+
+        if let lastEditedTimestamp = dictionary["lastEditedAt"] as? TimeInterval {
+            self.lastEditedAt = Date(timeIntervalSince1970: lastEditedTimestamp / 1000)
+        } else {
+            self.lastEditedAt = nil
+        }
+    }
 }
 
 // MARK: - Preview Helpers
@@ -131,3 +176,23 @@ extension Video {
     }
 }
 #endif
+
+enum VideoError: LocalizedError {
+    case invalidData
+    case uploadFailed
+    case downloadFailed
+    case processingFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidData:
+            return "Invalid video data"
+        case .uploadFailed:
+            return "Failed to upload video"
+        case .downloadFailed:
+            return "Failed to download video"
+        case .processingFailed:
+            return "Failed to process video"
+        }
+    }
+}

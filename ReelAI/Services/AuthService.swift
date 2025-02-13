@@ -1,7 +1,7 @@
 import FirebaseAuth
 
 protocol AuthServiceProtocol {
-    var currentUser: User? { get }
+    var currentUser: FirebaseAuth.User? { get }
     func signOut() throws
 }
 
@@ -9,7 +9,7 @@ class FirebaseAuthService: AuthServiceProtocol {
     // MARK: - Shared Instance
     static let shared = FirebaseAuthService()
 
-    var currentUser: User? {
+    var currentUser: FirebaseAuth.User? {
         Auth.auth().currentUser
     }
 

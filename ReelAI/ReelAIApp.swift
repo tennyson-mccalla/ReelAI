@@ -18,13 +18,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         logger.debug("🚀 Initializing app")
-        logger.debug("🔧 Configuring Firebase")
         FirebaseApp.configure()
-
-        // Initialize database with persistence
-        _ = FirebaseDatabaseManager.shared
-
-        logger.debug("✅ Firebase configured with persistence enabled")
         return true
     }
 }
@@ -86,7 +80,7 @@ struct ReelAIApp: App {
                             }
 
                             NavigationStack {
-                                ProfileTestView()
+                                ProfileView()
                             }
                             .tabItem {
                                 Label("Profile", systemImage: "person.circle.fill")
@@ -99,7 +93,6 @@ struct ReelAIApp: App {
                 }
                 .onAppear {
                     logger.debug("📱 Building view hierarchy")
-                    logger.debug("🔑 Auth state: \(authViewModel.isAuthenticated)")
                 }
             }
             .environmentObject(authViewModel)

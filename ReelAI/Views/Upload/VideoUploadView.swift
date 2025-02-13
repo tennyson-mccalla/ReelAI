@@ -1,21 +1,16 @@
 import SwiftUI
 import PhotosUI
+import FirebaseDatabase
+import os
+import FirebaseAuth
 
 struct VideoUploadView: View {
-    @StateObject private var viewModel: VideoUploadViewModel
+    @StateObject private var viewModel = VideoUploadViewModel(authService: FirebaseAuthService.shared)
     @State private var showingPhotoPicker = false
     @Environment(\.dismiss) private var dismiss
     @State private var showingQualityPicker = false
-
-    init() {
-        // Initialize with default dependencies, the view model will handle async setup
-        let viewModel = VideoUploadViewModel(
-            authService: FirebaseAuthService.shared,
-            storage: FirebaseStorageManager(),
-            database: FirebaseDatabaseManager.shared
-        )
-        _viewModel = StateObject(wrappedValue: viewModel)
-    }
+    @State private var showError = false
+    @State private var error: Error?
 
     var body: some View {
         ScrollView {
@@ -72,6 +67,13 @@ struct VideoUploadView: View {
         .onChange(of: viewModel.shouldNavigateToProfile) { _, shouldNavigate in
             if shouldNavigate {
                 dismiss()
+            }
+        }
+        .alert("Error", isPresented: $showError) {
+            Button("OK") { showError = false }
+        } message: {
+            if let error = error {
+                Text(error.localizedDescription)
             }
         }
     }

@@ -17,6 +17,44 @@ public enum NetworkStatus {
     case unknown
 }
 
+// MARK: - Video Quality
+public enum VideoQuality {
+    case low
+    case medium
+    case high
+}
+
+// MARK: - Upload Status
+public enum UploadStatus {
+    case pending
+    case uploading(progress: Double)
+    case completed(URL)
+    case failed(Error)
+    case cancelled
+}
+
+// MARK: - Video Upload Protocol
+@MainActor
+public protocol VideoUploadViewModelProtocol: ObservableObject {
+    var selectedVideoURLs: [URL] { get set }
+    func setSelectedVideos(urls: [URL]) async
+    func setError(_ error: PublicUploadError) async
+}
+
+public enum PublicUploadError: LocalizedError {
+    case videoProcessingFailed(reason: String)
+    case networkUnavailable
+
+    public var errorDescription: String? {
+        switch self {
+        case .videoProcessingFailed(let reason):
+            return "Video processing failed: \(reason)"
+        case .networkUnavailable:
+            return "Network connection required for upload"
+        }
+    }
+}
+
 @MainActor
 final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol {
     // MARK: - Published Properties
@@ -40,54 +78,32 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
 
     // MARK: - Private Properties
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "VideoUploadViewModel")
-
-    // MARK: - Dependencies
+    private let storage = Storage.storage().reference()
+    private let database = Database.database().reference()
     private let networkMonitor: NetworkMonitor
     private let videoProcessor: VideoProcessor
     private let authService: AuthServiceProtocol
-    private let storageManager: StorageManager
-    private let databaseManager: ReelDB.Manager
+    private var uploadTasks: [URL: StorageUploadTask] = [:]
 
     // MARK: - Initialization
-    init(
-        authService: AuthServiceProtocol = FirebaseAuthService.shared,
-        storage: StorageManager = FirebaseStorageManager(),
-        database: ReelDB.Manager
-    ) {
+    init(authService: AuthServiceProtocol = FirebaseAuthService.shared) {
         self.authService = authService
-        self.storageManager = storage
-        self.databaseManager = database
         self.networkMonitor = NetworkMonitor.shared
         self.videoProcessor = VideoProcessor()
 
-        // Defer network monitoring setup to avoid MainActor isolation issues
         Task { @MainActor in
             setupNetworkMonitoring()
         }
     }
 
-    // Convenience initializer that handles actor isolation
-    static func create() async -> VideoUploadViewModel {
-        let database = await FirebaseDatabaseManager.shared
-        return VideoUploadViewModel(
-            authService: FirebaseAuthService.shared,
-            storage: FirebaseStorageManager(),
-            database: database
-        )
-    }
-
     // MARK: - VideoUploadViewModelProtocol Implementation
-    @MainActor
-    public func setSelectedVideos(urls: [URL]) {
+    public func setSelectedVideos(urls: [URL]) async {
         selectedVideoURLs = urls
         uploadStatuses = Dictionary(uniqueKeysWithValues: urls.map { ($0, .pending) })
-
-        Task {
-            await self.generateThumbnails(for: urls)
-        }
+        await generateThumbnails(for: urls)
     }
 
-    public func setError(_ error: PublicUploadError) {
+    public func setError(_ error: PublicUploadError) async {
         errorMessage = error.localizedDescription
     }
 
@@ -95,12 +111,12 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
     func uploadVideos() {
         Task {
             guard !selectedVideoURLs.isEmpty else {
-                setError(.videoProcessingFailed(reason: "No videos selected"))
+                await setError(.videoProcessingFailed(reason: "No videos selected"))
                 return
             }
 
             guard networkMonitor.isConnected else {
-                setError(.networkUnavailable)
+                await setError(.networkUnavailable)
                 return
             }
 
@@ -113,30 +129,22 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
                 }
 
                 // Update UI to show we're processing this video
-                await MainActor.run {
-                    uploadStatuses[url] = .uploading(progress: 0.0)
-                }
+                uploadStatuses[url] = .uploading(progress: 0.0)
 
                 do {
                     let downloadURL = try await processAndUploadVideo(at: url, index: index)
-                    await MainActor.run {
-                        successCount += 1
-                        uploadStatuses[url] = .completed(downloadURL)
-                        uploadedVideoURLs.append(downloadURL)
-                    }
+                    successCount += 1
+                    uploadStatuses[url] = .completed(downloadURL)
+                    uploadedVideoURLs.append(downloadURL)
                 } catch {
-                    await MainActor.run {
-                        failedCount += 1
-                        uploadStatuses[url] = .failed(error)
-                        logger.error("Failed to upload video: \(error.localizedDescription)")
-                    }
+                    failedCount += 1
+                    uploadStatuses[url] = .failed(error)
+                    logger.error("Failed to upload video: \(error.localizedDescription)")
                     break
                 }
             }
 
-            await MainActor.run {
-                handleUploadCompletion(successCount: successCount, failedCount: failedCount)
-            }
+            handleUploadCompletion(successCount: successCount, failedCount: failedCount)
         }
     }
 
@@ -178,46 +186,72 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
     }
 
     @MainActor
-    private func processAndUploadVideo(at url: URL, index: Int) async throws {
+    private func processAndUploadVideo(at url: URL, index: Int) async throws -> URL {
         uploadStatuses[url] = .uploading(progress: 0.0)
 
         do {
             let processedURL = try await videoProcessor.compressVideo(at: url, quality: mapQuality(selectedQuality))
             let videoName = "\(UUID().uuidString)".replacingOccurrences(of: "-", with: "")
+            let videoRef = storage.child("videos").child(videoName)
 
             // Upload video with progress tracking
-            let downloadURL = try await storageManager.uploadVideo(
-                processedURL,
-                name: videoName,
-                progressHandler: { progress in
+            let metadata = StorageMetadata()
+            metadata.contentType = "video/mp4"
+
+            let downloadURL = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+                let task = videoRef.putFile(from: processedURL, metadata: metadata) { metadata, error in
+                    if let error = error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+
+                    videoRef.downloadURL { url, error in
+                        if let error = error {
+                            continuation.resume(throwing: error)
+                        } else if let url = url {
+                            continuation.resume(returning: url)
+                        } else {
+                            continuation.resume(throwing: NSError(domain: "Upload", code: -1))
+                        }
+                    }
+                }
+
+                task.observe(.progress) { snapshot in
                     Task { @MainActor in
+                        let progress = Double(snapshot.progress?.completedUnitCount ?? 0) /
+                            Double(snapshot.progress?.totalUnitCount ?? 1)
                         self.uploadStatuses[url] = .uploading(progress: progress)
                     }
                 }
-            )
 
+                self.uploadTasks[url] = task
+            }
+
+            // Upload thumbnail if available
             var thumbnailURL: URL?
             if let thumbnailImage = thumbnails[url],
                let thumbnailData = thumbnailImage.jpegData(compressionQuality: 0.8) {
-                thumbnailURL = try await storageManager.uploadThumbnail(thumbnailData, for: videoName)
+                let thumbnailRef = storage.child("thumbnails").child(videoName)
+                _ = try await thumbnailRef.putDataAsync(thumbnailData)
+                thumbnailURL = try await thumbnailRef.downloadURL()
             }
 
-            let video = Video(
-                id: videoName,
-                userId: Auth.auth().currentUser?.uid,
-                videoURL: downloadURL,
-                thumbnailURL: thumbnailURL,
-                createdAt: Date(),
-                caption: captions[url] ?? "",
-                likes: 0,
-                comments: 0,
-                isDeleted: false,
-                privacyLevel: .public
-            )
+            // Update database
+            let video = [
+                "id": videoName,
+                "userId": Auth.auth().currentUser?.uid ?? "",
+                "videoURL": downloadURL.absoluteString,
+                "thumbnailURL": thumbnailURL?.absoluteString as Any,
+                "createdAt": ServerValue.timestamp(),
+                "caption": captions[url] ?? "",
+                "likes": 0,
+                "comments": 0,
+                "isDeleted": false,
+                "privacyLevel": "public"
+            ] as [String: Any]
 
-            try await databaseManager.updateVideo(video)
-            uploadStatuses[url] = .completed(downloadURL)
-            uploadedVideoURLs.append(downloadURL)
+            try await database.child("videos").child(videoName).setValue(video)
+            return downloadURL
 
         } catch {
             logger.error("Failed to process and upload video: \(error.localizedDescription)")
@@ -228,9 +262,9 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
 
     @MainActor
     func cancelUpload(for url: URL) {
-        // Cancel the specific upload task
-        storageManager.cancelUpload(for: url)
+        uploadTasks[url]?.cancel()
         uploadStatuses[url] = .cancelled
+        uploadTasks[url] = nil
     }
 
     func cancelUpload() {
