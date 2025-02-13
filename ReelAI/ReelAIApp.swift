@@ -20,37 +20,50 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         logger.debug("🚀 Starting app initialization")
 
+        // 1. Configure Firebase
+        guard configureFirebase() else {
+            logger.error("🔴 Failed to configure Firebase")
+            return false
+        }
+        logger.debug("✅ Firebase configured")
+
+        // 2. Initialize auth service which sets up persistence
+        _ = FirebaseAuthService.shared
+        logger.debug("✅ Auth service initialized")
+
+        // 3. Set up offline capabilities
+        Database.database().goOnline()
+
+        // 4. Add state change listener
+        setupConnectionStateMonitoring()
+
+        logger.debug("✅ App initialization complete")
+        return true
+    }
+
+    private func configureFirebase() -> Bool {
         do {
-            // 1. Configure Firebase
             FirebaseApp.configure()
-            logger.debug("✅ Firebase configured")
-
-            // 2. Initialize auth service which sets up persistence
-            _ = FirebaseAuthService.shared
-            logger.debug("✅ Auth service initialized")
-
-            // 3. Set up offline capabilities
-            Database.database().goOnline()
-
-            // 4. Add state change listener
-            Database.database().addServiceStateObserver { state in
-                switch state {
-                case .online:
-                    self.logger.debug("💚 Firebase connection: Online")
-                case .offline:
-                    self.logger.debug("🔸 Firebase connection: Offline")
-                case .restricted:
-                    self.logger.error("🔴 Firebase connection: Restricted")
-                @unknown default:
-                    self.logger.error("⚠️ Firebase connection: Unknown state")
-                }
-            }
-
-            logger.debug("✅ App initialization complete")
             return true
         } catch {
-            logger.error("🔴 Failed to initialize app: \(error.localizedDescription)")
+            logger.error("🔴 Firebase configuration failed: \(error.localizedDescription)")
             return false
+        }
+    }
+
+    private func setupConnectionStateMonitoring() {
+        Database.database().addServiceStateObserver { [weak self] state in
+            guard let self = self else { return }
+            switch state {
+            case .online:
+                self.logger.debug("💚 Firebase connection: Online")
+            case .offline:
+                self.logger.debug("🔸 Firebase connection: Offline")
+            case .restricted:
+                self.logger.error("🔴 Firebase connection: Restricted")
+            @unknown default:
+                self.logger.error("⚠️ Firebase connection: Unknown state")
+            }
         }
     }
 
