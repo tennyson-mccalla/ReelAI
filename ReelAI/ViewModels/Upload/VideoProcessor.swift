@@ -3,9 +3,12 @@
 
 import AVFoundation
 import UIKit
+import os
 
 @MainActor
 final class VideoProcessor {
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "VideoProcessor")
+
     enum Quality {
         case high    // 1080p, 8Mbps
         case medium  // 720p, 5Mbps
@@ -33,7 +36,7 @@ final class VideoProcessor {
 
     func compressVideo(at sourceURL: URL, quality: Quality) async throws -> URL {
         let inputSize = try sourceURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        print("📱 Original video size: \(Float(inputSize) / 1_000_000)MB")
+        logger.debug("📱 Original video size: \(Float(inputSize) / 1_000_000)MB")
 
         let tempDir = FileManager.default.temporaryDirectory
         let outputURL = tempDir.appendingPathComponent(UUID().uuidString + ".mp4")
@@ -44,6 +47,7 @@ final class VideoProcessor {
             asset: asset,
             presetName: quality.exportPreset
         ) else {
+            logger.error("❌ Failed to create export session")
             throw NSError(domain: "VideoCompression", code: -1)
         }
 
@@ -54,11 +58,12 @@ final class VideoProcessor {
         try await exportSession.export(to: outputURL, as: .mp4)
 
         if let outputSize = try? outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-            print("📱 Compressed video size: \(Float(outputSize) / 1_000_000)MB")
-            print("📱 Compression ratio: \(Float(outputSize) / Float(inputSize))")
+            let compressionRatio = Float(outputSize) / Float(inputSize)
+            logger.debug("📱 Compressed video size: \(Float(outputSize) / 1_000_000)MB, ratio: \(compressionRatio)")
             return outputURL
         }
 
+        logger.error("❌ Failed to get output file size")
         throw NSError(domain: "VideoCompression", code: -1)
     }
 
@@ -70,12 +75,15 @@ final class VideoProcessor {
         return try await withCheckedThrowingContinuation { continuation in
             imageGenerator.generateCGImageAsynchronously(for: .zero) { cgImage, _, error in
                 if let error = error {
+                    self.logger.error("❌ Thumbnail generation failed: \(error.localizedDescription)")
                     continuation.resume(throwing: error)
                     return
                 }
 
                 guard let cgImage = cgImage else {
-                    continuation.resume(throwing: NSError(domain: "ThumbnailError", code: -1))
+                    let error = NSError(domain: "ThumbnailError", code: -1)
+                    self.logger.error("❌ Failed to generate CGImage for thumbnail")
+                    continuation.resume(throwing: error)
                     return
                 }
 

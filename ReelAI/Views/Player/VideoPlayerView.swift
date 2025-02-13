@@ -4,7 +4,6 @@ import os
 
 class PlayerObserver: ObservableObject {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "PlayerObserver")
-    private var timeObserver: Any?
     private var statusObserver: NSKeyValueObservation?
     private var loadedRangesObserver: NSKeyValueObservation?
     private var rateObserver: NSKeyValueObservation?
@@ -144,12 +143,6 @@ class PlayerObserver: ObservableObject {
             }
         }
 
-        // Add periodic time observer - only for stall detection
-        let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
-        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
-            // Keep observer for stall detection but remove logging
-        }
-
         // Handle end of video
         NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
@@ -164,9 +157,6 @@ class PlayerObserver: ObservableObject {
 
     deinit {
         deactivate()
-        if let timeObserver = timeObserver {
-            player?.removeTimeObserver(timeObserver)
-        }
         statusObserver?.invalidate()
         loadedRangesObserver?.invalidate()
         rateObserver?.invalidate()

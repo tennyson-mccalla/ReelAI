@@ -1,7 +1,6 @@
 import Foundation
 import FirebaseStorage
 
-@MainActor
 protocol StorageManager {
     func uploadProfilePhoto(_ data: Data, userId: String) async throws -> URL
     func uploadVideo(_ url: URL, name: String, progressHandler: @escaping (Double) -> Void) async throws -> URL

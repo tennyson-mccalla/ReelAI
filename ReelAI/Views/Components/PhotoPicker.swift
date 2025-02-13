@@ -1,13 +1,19 @@
 import SwiftUI
 import PhotosUI
+import Photos
+import os
+
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "PhotoPicker")
 
 struct PhotoPicker: UIViewControllerRepresentable {
-    let completion: (Result<Data, Error>) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Binding var selectedImage: UIImage?
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
-        var config = PHPickerConfiguration()
-        config.selectionLimit = 1
+        var config = PHPickerConfiguration(photoLibrary: .shared())
         config.filter = .images
+        config.selectionLimit = 1
+        config.preferredAssetRepresentationMode = .current
 
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator
@@ -17,49 +23,45 @@ struct PhotoPicker: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(completion: completion)
+        Coordinator(self)
     }
 
-    class Coordinator: PHPickerViewControllerDelegate {
-        let completion: (Result<Data, Error>) -> Void
+    class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: PhotoPicker
 
-        init(completion: @escaping (Result<Data, Error>) -> Void) {
-            self.completion = completion
+        init(_ parent: PhotoPicker) {
+            self.parent = parent
         }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            picker.dismiss(animated: true)
-
             guard let provider = results.first?.itemProvider else {
+                logger.debug("No image selected")
+                parent.dismiss()
                 return
             }
 
             if provider.canLoadObject(ofClass: UIImage.self) {
                 provider.loadObject(ofClass: UIImage.self) { [weak self] image, error in
-                    if let error = error {
-                        self?.completion(.failure(error))
-                        return
-                    }
+                    DispatchQueue.main.async {
+                        if let error = error {
+                            logger.error("Failed to load image: \(error.localizedDescription)")
+                            self?.parent.dismiss()
+                            return
+                        }
 
-                    guard let image = image as? UIImage,
-                          let data = image.jpegData(compressionQuality: 0.8) else {
-                        self?.completion(.failure(PhotoPickerError.invalidImage))
-                        return
-                    }
+                        guard let image = image as? UIImage else {
+                            logger.error("Invalid image format")
+                            self?.parent.dismiss()
+                            return
+                        }
 
-                    self?.completion(.success(data))
+                        self?.parent.selectedImage = image
+                        self?.parent.dismiss()
+                    }
                 }
-            }
-        }
-    }
-
-    enum PhotoPickerError: LocalizedError {
-        case invalidImage
-
-        var errorDescription: String? {
-            switch self {
-            case .invalidImage:
-                return "Could not process the selected image"
+            } else {
+                logger.error("Selected item is not an image")
+                parent.dismiss()
             }
         }
     }
@@ -71,13 +73,6 @@ struct PhotoPicker: UIViewControllerRepresentable {
         // This view would normally be shown in a sheet
     }
     .sheet(isPresented: .constant(true)) {
-        PhotoPicker { result in
-            switch result {
-            case .success(let data):
-                print("✅ Photo selected: \(data.count) bytes")
-            case .failure(let error):
-                print("❌ Photo selection failed: \(error.localizedDescription)")
-            }
-        }
+        PhotoPicker(selectedImage: .constant(nil))
     }
 }

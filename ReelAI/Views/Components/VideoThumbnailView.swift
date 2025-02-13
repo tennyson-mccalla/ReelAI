@@ -10,71 +10,41 @@ struct VideoThumbnailView: View {
 
     var body: some View {
         GeometryReader { geometry in
-        ZStack {
-            if let image = thumbnailImage {
-                Image(uiImage: image)
-                    .resizable()
+            ZStack {
+                if let image = thumbnailImage {
+                    Image(uiImage: image)
+                        .resizable()
                         .aspectRatio(9/16, contentMode: .fill)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
-            } else {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.3))
+                } else {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
                         .aspectRatio(9/16, contentMode: .fill)
-            }
+                }
 
-            if isLoading {
-                ProgressView()
+                if isLoading {
+                    ProgressView()
+                }
             }
-        }
         }
         .aspectRatio(9/16, contentMode: .fit)
         .task(id: loadAttempt) {
-            isLoading = true
-            if let cached = await VideoCacheManager.shared.getCachedThumbnail(withIdentifier: video.id) {
-                thumbnailImage = cached
-                isLoading = false
-            } else if let thumbnailURL = video.thumbnailURL {
-                do {
-                    let (data, _) = try await URLSession.shared.data(from: thumbnailURL)
-                    guard let image = UIImage(data: data) else {
-                        logger.error("❌ Failed to create image from data")
-                        isLoading = false
-                        return
-                    }
-
-                    // Cache the thumbnail
-                    _ = try await VideoCacheManager.shared.cacheThumbnail(image, withIdentifier: video.id)
-                    logger.debug("✅ Loaded and cached thumbnail")
-
-                    thumbnailImage = image
-                    isLoading = false
-                } catch {
-                    logger.error("❌ Failed to load thumbnail: \(error.localizedDescription)")
-                    isLoading = false
-                }
-            }
+            await loadThumbnail()
         }
         .onReceive(NotificationCenter.default.publisher(for: .videoCacheCleared)) { _ in
             thumbnailImage = nil
             isLoading = true
             loadAttempt += 1
         }
-        .onAppear {
-            Task {
-                await loadThumbnail()
-            }
-        }
     }
 
     private func loadThumbnail() async {
         guard thumbnailImage == nil else { return }
-        let start = Date()
-        logger.debug("🖼️ Loading thumbnail for video: \(video.id)")
+        isLoading = true
 
-        // First try to get from cache
+        // Try cache first
         if let cached = await VideoCacheManager.shared.getCachedThumbnail(withIdentifier: video.id) {
-            logger.debug("✅ Loaded cached thumbnail in \(Date().timeIntervalSince(start))s")
             await MainActor.run {
                 withAnimation {
                     thumbnailImage = cached
@@ -84,28 +54,23 @@ struct VideoThumbnailView: View {
             return
         }
 
-        // If not in cache, load from URL
+        // Load from URL if not cached
         guard let thumbnailURL = video.thumbnailURL else {
-            logger.error("❌ No thumbnail URL for video: \(video.id)")
-            await MainActor.run {
-                isLoading = false
-            }
+            logger.error("No thumbnail URL available")
+            await MainActor.run { isLoading = false }
             return
         }
 
         do {
             let (data, _) = try await URLSession.shared.data(from: thumbnailURL)
             guard let image = UIImage(data: data) else {
-                logger.error("❌ Failed to create image from data")
-                await MainActor.run {
-                    isLoading = false
-                }
+                logger.error("Invalid image data received")
+                await MainActor.run { isLoading = false }
                 return
             }
 
             // Cache the thumbnail
             _ = try await VideoCacheManager.shared.cacheThumbnail(image, withIdentifier: video.id)
-            logger.debug("✅ Loaded and cached thumbnail in \(Date().timeIntervalSince(start))s")
 
             await MainActor.run {
                 withAnimation {
@@ -114,10 +79,8 @@ struct VideoThumbnailView: View {
                 }
             }
         } catch {
-            logger.error("❌ Failed to load thumbnail: \(error.localizedDescription)")
-            await MainActor.run {
-                isLoading = false
-            }
+            logger.error("Failed to load thumbnail: \(error.localizedDescription)")
+            await MainActor.run { isLoading = false }
         }
     }
 }

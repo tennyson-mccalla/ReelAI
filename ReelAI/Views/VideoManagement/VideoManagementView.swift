@@ -11,12 +11,26 @@ struct VideoManagementView: View {
 
     init(video: Video) {
         self.video = video
-        self._viewModel = StateObject(wrappedValue: VideoManagementViewModel.create())
+        // Create a temporary view model that will be initialized in task
+        self._viewModel = StateObject(wrappedValue: VideoManagementViewModel())
         self._editedCaption = State(initialValue: video.caption)
         self._currentPrivacyLevel = State(initialValue: video.privacyLevel)
     }
 
     var body: some View {
+        Group {
+            if !viewModel.isInitialized {
+                ProgressView("Loading...")
+                    .task {
+                        await viewModel.initialize()
+                    }
+            } else {
+                mainContent
+            }
+        }
+    }
+
+    private var mainContent: some View {
         List {
             // Thumbnail and basic info
             Section {
@@ -131,8 +145,5 @@ private struct CaptionEditorView: View {
 #Preview {
     NavigationView {
         VideoManagementView(video: .mock)
-            .task {
-                // Preview setup can happen here if needed
-            }
     }
 }

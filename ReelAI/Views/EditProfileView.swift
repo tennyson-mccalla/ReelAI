@@ -2,18 +2,22 @@ import SwiftUI
 import FirebaseStorage
 import FirebaseDatabase
 import FirebaseAuth
+import Photos
+import PhotosUI
+import os
 
-@MainActor
+/// @deprecated Use `ProfileActorView` instead. This view will be removed in a future update.
+@available(*, deprecated, message: "Use ProfileActorView instead")
 struct EditProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: EditProfileViewModel
-    @State private var showingPhotoPicker = false
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "EditProfileView")
 
-    @MainActor
     init(profile: UserProfile,
          storage: StorageManager,
          databaseManager: DatabaseManager,
          authService: FirebaseAuthService) {
+        logger.debug("📱 Initializing EditProfileView")
         _viewModel = StateObject(wrappedValue: EditProfileViewModel(
             profile: profile,
             storage: storage,
@@ -24,64 +28,85 @@ struct EditProfileView: View {
     }
 
     var body: some View {
-        NavigationView { formContent }
-    }
+        NavigationStack {
+            Form {
+                Section {
+                    // Photo picker button
+                    ProfilePhotoView(
+                        photoManager: ProfilePhotoManager(
+                            storage: viewModel.storage,
+                            database: viewModel.databaseManager,
+                            userId: viewModel.profile.id
+                        ),
+                        photoURL: viewModel.profile.photoURL,
+                        size: 120
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
 
-    private var formContent: some View {
-        Form {
-            Section {
-                PhotoSelectorButton(
-                    photoURL: viewModel.profile.photoURL,
-                    isLoading: viewModel.isLoading
-                ) { showingPhotoPicker = true }
+                    TextField("Display Name", text: $viewModel.profile.displayName)
+                        .textContentType(.name)
 
-                TextField("Display Name", text: $viewModel.profile.displayName)
-                    .textContentType(.name)
-
-                TextField("Bio", text: $viewModel.profile.bio, axis: .vertical)
-                    .lineLimit(3...6)
-            }
-
-            Section("Social Links") {
-                ForEach($viewModel.profile.socialLinks) { $link in
-                    SocialLinkRow(link: $link)
+                    TextField("Bio", text: $viewModel.profile.bio, axis: .vertical)
+                        .lineLimit(3...6)
                 }
 
-                Button(action: addSocialLink) {
-                    Label("Add Social Link", systemImage: "plus.circle.fill")
+                Section("Social Links") {
+                    ForEach($viewModel.profile.socialLinks) { $link in
+                        SocialLinkRow(link: $link)
+                    }
+
+                    Button(action: addSocialLink) {
+                        Label("Add Social Link", systemImage: "plus.circle.fill")
+                    }
                 }
             }
-        }
-        .navigationTitle("Edit Profile")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") {
-                    Task { try await viewModel.updateProfile(); dismiss() }
+            .navigationTitle("Edit Profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }
                 }
-                .disabled(viewModel.isLoading)
-            }
-        }
-        .sheet(isPresented: $showingPhotoPicker) {
-            PhotoPicker { result in
-                switch result {
-                case .success(let imageData):
-                    Task { try await viewModel.updateProfilePhoto(imageData) }
-                case .failure(let error):
-                    viewModel.updateError(error)
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        Task {
+                            do {
+                                try await viewModel.updateProfile()
+                                dismiss()
+                            } catch {
+                                viewModel.updateError(error)
+                            }
+                        }
+                    }
+                    .disabled(viewModel.isLoading)
                 }
             }
+            .task {
+                logger.debug("🔐 Checking photo library authorization")
+                let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+                logger.debug("📸 Photo library status: \(status.rawValue)")
+            }
+            .alert(
+                viewModel.error?.localizedDescription ?? "Error",
+                isPresented: Binding(
+                    get: { viewModel.error != nil },
+                    set: { if !$0 { viewModel.updateError(nil) } }
+                ),
+                actions: {
+                    Button("OK") {
+                        viewModel.updateError(nil)
+                    }
+                },
+                message: {
+                    if let error = viewModel.error as? LocalizedError {
+                        Text(error.recoverySuggestion ?? "")
+                    }
+                }
+            )
+            .disabled(viewModel.isLoading)
         }
-        .alert("Error", isPresented: Binding<Bool>(
-            get: { viewModel.error != nil },
-            set: { newValue in if !newValue { viewModel.updateError(nil) } }
-        )) {
-            Button("OK", role: .cancel) { viewModel.updateError(nil) }
-        } message: {
-            Text(viewModel.error?.localizedDescription ?? "Unknown error")
-        }
-        .disabled(viewModel.isLoading)
     }
 
     private func addSocialLink() {
@@ -94,60 +119,21 @@ struct EditProfileView: View {
     }
 }
 
-private struct PhotoSelectorButton: View {
-    let photoURL: URL?
-    let isLoading: Bool
-    let action: () -> Void
+// MARK: - Equatable Conformance
+extension UserProfile: Equatable {
+    static func == (lhs: UserProfile, rhs: UserProfile) -> Bool {
+        lhs.id == rhs.id &&
+        lhs.displayName == rhs.displayName &&
+        lhs.bio == rhs.bio &&
+        lhs.photoURL == rhs.photoURL &&
+        lhs.socialLinks == rhs.socialLinks
+    }
+}
 
-    var body: some View {
-        Button(action: action) {
-            ZStack(alignment: .bottomTrailing) {
-                AsyncImage(url: photoURL) { phase in
-                    switch phase {
-                    case .empty:
-                        Image(systemName: "person.circle.fill")
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 120, height: 120)
-                            .foregroundColor(.gray)
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 120, height: 120)
-                    case .failure:
-                        Image(systemName: "person.circle.fill")
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 120, height: 120)
-                            .foregroundColor(.gray)
-                    @unknown default:
-                        Image(systemName: "person.circle.fill")
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 120, height: 120)
-                            .foregroundColor(.gray)
-                    }
-                }
-                .clipShape(Circle())
-
-                if isLoading {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .frame(width: 30, height: 30)
-                        .background(Color.black.opacity(0.5))
-                        .clipShape(Circle())
-                        .offset(x: -10, y: -10)
-                } else {
-                    Image(systemName: "pencil.circle.fill")
-                        .resizable()
-                        .frame(width: 30, height: 30)
-                        .background(Color.white)
-                        .clipShape(Circle())
-                        .offset(x: -10, y: -10)
-                }
-            }
-        }
+extension UserProfile.SocialLink: Equatable {
+    static func == (lhs: UserProfile.SocialLink, rhs: UserProfile.SocialLink) -> Bool {
+        lhs.platform == rhs.platform &&
+        lhs.url == rhs.url
     }
 }
 

@@ -1,13 +1,14 @@
 import Foundation
 import FirebaseStorage
 import FirebaseAuth
+import os
 
-@MainActor
 final class FirebaseStorageManager: StorageManager {
     private let storage = Storage.storage().reference()
     private let maxRetries = 3
     private let baseRetryDelay: TimeInterval = 1.0
     private var uploadTasks: [URL: StorageUploadTask] = [:]
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "FirebaseStorageManager")
 
     enum StorageError: Error, LocalizedError {
         case notAuthenticated
@@ -15,6 +16,9 @@ final class FirebaseStorageManager: StorageManager {
         case invalidUser
         case networkError
         case uploadCancelled
+        case invalidImageData
+        case imageTooLarge
+        case invalidImageFormat
 
         var errorDescription: String? {
             switch self {
@@ -28,6 +32,12 @@ final class FirebaseStorageManager: StorageManager {
                 return "Network connection failed"
             case .uploadCancelled:
                 return "Upload was cancelled"
+            case .invalidImageData:
+                return "Invalid image data"
+            case .imageTooLarge:
+                return "Image size exceeds 5MB limit"
+            case .invalidImageFormat:
+                return "Invalid image format. Only JPEG images are supported"
             }
         }
     }
@@ -53,70 +63,51 @@ final class FirebaseStorageManager: StorageManager {
     }
 
     func uploadProfilePhoto(_ data: Data, userId: String) async throws -> URL {
+        logger.debug("📤 Starting profile photo upload for user: \(userId)")
+
+        // Verify user is authenticated
         guard let currentUser = Auth.auth().currentUser else {
+            logger.error("❌ No authenticated user found")
             throw StorageError.notAuthenticated
         }
 
-        // Verify user is uploading their own photo
         guard currentUser.uid == userId else {
+            logger.error("❌ User does not have permission to upload this photo")
             throw StorageError.notAuthenticated
         }
 
-        // Detailed data validation
-        print("📊 Image data details:")
-        print("- Size: \(data.count) bytes")
-        print("- Is empty: \(data.isEmpty)")
+        // Create reference with proper path structure and file extension
+        let photoRef = storage.child("profile_photos").child(userId).child("profile.jpg")
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+        metadata.customMetadata = [
+            "userId": userId,
+            "uploadTimestamp": "\(Date().timeIntervalSince1970)"
+        ]
 
-        guard !data.isEmpty else {
-            print("❌ Image data is empty")
-            throw StorageError.uploadFailed(NSError(domain: "PhotoUpload", code: -1, userInfo: [NSLocalizedDescriptionKey: "Empty image data"]))
-        }
+        do {
+            // First try to delete any existing photo
+            try? await photoRef.delete()
 
-        // Consistent filename for profile photo
-        let filename = "profile.jpg"
-        let photoRef = storage.child("profile_photos/\(userId)/\(filename)")
+            // Upload the new photo with metadata
+            let _ = try await photoRef.putDataAsync(data, metadata: metadata)
 
-        var lastError: Error?
-        for attempt in 0..<maxRetries {
-            do {
-                let metadata = StorageMetadata()
-                metadata.contentType = "image/jpeg"
+            // Get the download URL
+            let downloadURL = try await photoRef.downloadURL()
+            logger.debug("✅ Profile photo uploaded successfully: \(downloadURL)")
 
-                print("📤 Upload attempt \(attempt + 1): \(photoRef.fullPath)")
-
-                _ = try await photoRef.putDataAsync(data, metadata: metadata)
-                let url = try await photoRef.downloadURL()
-
-                print("✅ Upload successful: \(url)")
-                print("📍 Download URL: \(url)")
-                print("📍 URL String: \(url.absoluteString)")
-
-                return url
-            } catch {
-                lastError = error
-
-                if !shouldRetry(error: error) {
-                    break
-                }
-
-                print("⏳ Retrying upload in \(exponentialBackoff(attempt: attempt)) seconds")
-                try? await Task.sleep(nanoseconds: UInt64(exponentialBackoff(attempt: attempt) * 1_000_000_000))
+            // Verify the upload
+            let verifyMetadata = try await photoRef.getMetadata()
+            guard verifyMetadata.size > 0 else {
+                logger.error("❌ Uploaded file size verification failed")
+                throw StorageError.uploadFailed(NSError(domain: "FirebaseStorage", code: -1, userInfo: [NSLocalizedDescriptionKey: "Upload verification failed"]))
             }
+
+            return downloadURL
+        } catch {
+            logger.error("❌ Failed to upload profile photo: \(error.localizedDescription)")
+            throw StorageError.uploadFailed(error)
         }
-
-        // Log final error details
-        if let error = lastError {
-            print("❌ Upload failed after \(maxRetries) attempts")
-            print("- Error type: \(type(of: error))")
-            print("- Error description: \(error.localizedDescription)")
-
-            let nsError = error as NSError
-            print("- NS Error domain: \(nsError.domain)")
-            print("- NS Error code: \(nsError.code)")
-            print("- NS Error userInfo: \(nsError.userInfo)")
-        }
-
-        throw lastError ?? StorageError.uploadFailed(StorageError.networkError)
     }
 
     private func deleteExistingProfilePhoto(for userId: String) async throws {
@@ -124,11 +115,11 @@ final class FirebaseStorageManager: StorageManager {
 
         do {
             try await profilePhotoRef.delete()
-            print("✅ Existing profile photo deleted successfully")
+            logger.debug("✅ Existing profile photo deleted")
         } catch let error as NSError {
             // If the error is that the file doesn't exist, we can ignore it
             if error.domain == "FIRStorageErrorDomain" && error.code == -100 {
-                print("ℹ️ No existing profile photo found")
+                logger.debug("ℹ️ No existing profile photo to delete")
                 return
             }
             throw error

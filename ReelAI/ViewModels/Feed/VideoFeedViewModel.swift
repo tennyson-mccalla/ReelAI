@@ -24,16 +24,14 @@ class VideoFeedViewModel: ObservableObject {
     init(paginator: FeedPaginator? = nil, initialVideo: Video? = nil) {
         self.paginator = paginator ?? FeedPaginator()
         self.initialVideo = initialVideo
-
-        // Start loading videos immediately - Firebase will handle offline state
         Task {
-            logger.debug("🚀 Initializing VideoFeedViewModel")
             await loadVideos()
         }
     }
 
     func loadVideos() async {
-        logger.debug("📥 Starting video load")
+        guard !isLoading else { return }
+
         isLoading = true
         error = nil
 
@@ -41,11 +39,9 @@ class VideoFeedViewModel: ObservableObject {
             videos = try await fetchVideosWithRetry()
 
             if let initialVideo = initialVideo {
-                // If we have an initial video, find its index
                 if let index = videos.firstIndex(where: { $0.id == initialVideo.id }) {
                     currentIndex = index
                 } else {
-                    // If the initial video isn't in the current batch, add it
                     videos.insert(initialVideo, at: 0)
                     currentIndex = 0
                 }
@@ -74,13 +70,9 @@ class VideoFeedViewModel: ObservableObject {
                 return try await paginator.fetchNextBatch()
             } catch {
                 lastError = error
-
-                // Only retry for network-related errors
                 guard error.isRetryableNetworkError else {
                     throw error
                 }
-
-                // Exponential backoff
                 try await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt)) * 1_000_000_000))
             }
         }
@@ -90,15 +82,12 @@ class VideoFeedViewModel: ObservableObject {
 
     private func handleLoadError(_ error: Error) {
         let networkError = error as NSError
-
         NetworkErrorHandler.handle(
             error,
             retryAction: { [weak self] in
-                // Retry action
                 Task { await self?.loadVideos() }
             },
             fallbackAction: { [weak self] in
-                // Fallback action
                 self?.error = networkError.localizedDescription
                 self?.logger.error("❌ Failed to load videos: \(networkError.localizedDescription)")
             }
@@ -107,16 +96,11 @@ class VideoFeedViewModel: ObservableObject {
 
     private func updateVideoViews() {
         guard !videos.isEmpty else { return }
-
-        // Ensure currentIndex is within bounds
         currentIndex = max(0, min(currentIndex, videos.count - 1))
         currentVideo = videos[currentIndex]
-
-        // Update previous and next videos if available
         previousVideo = currentIndex > 0 ? videos[currentIndex - 1] : nil
         nextVideo = currentIndex < videos.count - 1 ? videos[currentIndex + 1] : nil
 
-        // Preload next video if available
         if let next = nextVideo {
             preloadVideo(next)
         }

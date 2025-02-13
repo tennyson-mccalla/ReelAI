@@ -13,12 +13,12 @@ actor VideoCacheManager {
     private let thumbnailCacheDirectory: URL
     private var cacheMetadata: [String: CacheEntry] = [:]
     private let logger = Logger(subsystem: "com.reelai.videocache", category: "VideoCacheManager")
-    
+
     // Configurable cache limits
     private let maxCacheSize: UInt64 = 1 * 1024 * 1024 * 1024  // 1GB for videos
     private let maxThumbnailCacheSize: UInt64 = 100 * 1024 * 1024  // 100MB for thumbnails
     private let maxCacheAge: TimeInterval = 7 * 24 * 60 * 60  // 1 week
-    
+
     // Tracking cache metadata
     private var hasLoggedInitialStatus = false
 
@@ -44,7 +44,7 @@ actor VideoCacheManager {
     // Designated initializer
     private init() throws {
         self.fileManager = .default
-        
+
         // Use the app support directory for persistent cache
         guard let appSupportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw VideoCacheError.failedToGetSupportDirectory
@@ -55,13 +55,13 @@ actor VideoCacheManager {
 
         // Create cache directories
         try Self.createDirectoriesNonIsolated(
-            directories: [videoCacheDirectory, thumbnailCacheDirectory], 
+            directories: [videoCacheDirectory, thumbnailCacheDirectory],
             fileManager: fileManager
         )
 
         // Load cache metadata
         self.cacheMetadata = try Self.loadCacheMetadataNonIsolated(
-            metadataURL: videoCacheDirectory.appendingPathComponent("cache_metadata.json"), 
+            metadataURL: videoCacheDirectory.appendingPathComponent("cache_metadata.json"),
             fileManager: fileManager
         )
 
@@ -73,14 +73,14 @@ actor VideoCacheManager {
 
     // Static method for non-isolated directory creation
     private static func createDirectoriesNonIsolated(
-        directories: [URL], 
+        directories: [URL],
         fileManager: FileManager
     ) throws {
         for directory in directories {
             if !fileManager.fileExists(atPath: directory.path) {
                 try fileManager.createDirectory(
-                    at: directory, 
-                    withIntermediateDirectories: true, 
+                    at: directory,
+                    withIntermediateDirectories: true,
                     attributes: nil
                 )
             }
@@ -89,14 +89,14 @@ actor VideoCacheManager {
 
     // Static method for non-isolated metadata loading
     private static func loadCacheMetadataNonIsolated(
-        metadataURL: URL, 
+        metadataURL: URL,
         fileManager: FileManager
     ) throws -> [String: CacheEntry] {
-        guard fileManager.fileExists(atPath: metadataURL.path) else { 
+        guard fileManager.fileExists(atPath: metadataURL.path) else {
             // Initialize empty metadata if file doesn't exist
             return [:]
         }
-        
+
         let data = try Data(contentsOf: metadataURL)
         return try JSONDecoder().decode([String: CacheEntry].self, from: data)
     }
@@ -108,7 +108,7 @@ actor VideoCacheManager {
 
     private func performCacheMaintenance() async throws {
         let currentTime = Date()
-        
+
         // Remove expired entries
         var removedEntries = 0
         for (id, entry) in cacheMetadata {
@@ -135,11 +135,11 @@ actor VideoCacheManager {
 
         for entry in sortedEntries {
             guard currentCacheSize > maxCacheSize else { break }
-            
+
             let fileURL = getCacheURL(forIdentifier: entry.id, fileExtension: "mp4")
             try? removeFile(at: fileURL)
             cacheMetadata.removeValue(forKey: entry.id)
-            
+
             currentCacheSize -= UInt64(entry.fileSize)
         }
     }
@@ -156,18 +156,18 @@ actor VideoCacheManager {
         // Perform actual caching (synchronous)
         let videoData = try Data(contentsOf: url)
         try saveData(videoData, to: cachedFileURL)
-        
+
         // Update cache metadata
         let entry = CacheEntry(
-            id: id, 
-            cachedAt: Date(), 
-            fileSize: Int64(videoData.count), 
+            id: id,
+            cachedAt: Date(),
+            fileSize: Int64(videoData.count),
             lastAccessedAt: Date()
         )
         cacheMetadata[id] = entry
-        
+
         try saveCacheMetadata()
-        
+
         // Notify of cache size change
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .videoCacheSizeChanged, object: nil)
@@ -181,7 +181,7 @@ actor VideoCacheManager {
         guard var entry = cacheMetadata[id] else { return }
         entry.lastAccessedAt = Date()
         cacheMetadata[id] = entry
-        
+
         // Periodically save metadata to avoid constant writes
         Task {
             try? saveCacheMetadata()
@@ -232,14 +232,12 @@ actor VideoCacheManager {
         let cachedFileURL = getThumbnailCacheURL(forIdentifier: id, fileExtension: "jpg")
 
         guard fileExists(at: cachedFileURL) else {
-            logger.debug("No cached thumbnail found for id: \(id)")
             return nil
         }
 
         do {
             let imageData = try loadData(from: cachedFileURL)
             if let image = UIImage(data: imageData) {
-                logger.debug("Loaded cached thumbnail for id: \(id)")
                 return image
             }
         } catch {
@@ -253,7 +251,6 @@ actor VideoCacheManager {
         let thumbnailURL = thumbnailCacheDirectory.appendingPathComponent("\(id).jpg")
 
         if fileManager.fileExists(atPath: thumbnailURL.path) {
-            logger.debug("Found cached thumbnail for id: \(id)")
             return thumbnailURL
         }
 
@@ -262,7 +259,6 @@ actor VideoCacheManager {
         }
 
         try data.write(to: thumbnailURL)
-        logger.info("Cached new thumbnail for id: \(id)")
         return thumbnailURL
     }
 
@@ -270,12 +266,12 @@ actor VideoCacheManager {
         // Clear both caches
         try await clearVideoCache()
         try await clearThumbnailCache()
-        
+
         // Post notification that cache was cleared
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .videoCacheCleared, object: nil)
         }
-        
+
         // Log status after clearing
         let message = "Cache cleared successfully"
         print(message)
@@ -339,13 +335,13 @@ actor VideoCacheManager {
             let thumbnailCount = try? await countFiles(in: thumbnailCacheDirectory)
             let videoSize = try? await calculateSize(of: videoCacheDirectory)
             let thumbnailSize = try? await calculateSize(of: thumbnailCacheDirectory)
-            
+
             let message = """
             📊 Cache Status:
             Videos: \(videoCount ?? 0) files (\(ByteCountFormatter.string(fromByteCount: Int64(videoSize ?? 0), countStyle: .file)))
             Thumbnails: \(thumbnailCount ?? 0) files (\(ByteCountFormatter.string(fromByteCount: Int64(thumbnailSize ?? 0), countStyle: .file)))
             """
-            
+
             // Only log once
             if !hasLoggedInitialStatus {
                 logger.info("\(message)")
@@ -353,12 +349,12 @@ actor VideoCacheManager {
             }
         }
     }
-    
+
     private func countFiles(in directory: URL) async throws -> Int {
         let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         return contents.count
     }
-    
+
     private func calculateSize(of directory: URL) async throws -> UInt64 {
         let contents = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])
         return try contents.reduce(0) { total, url in

@@ -42,31 +42,42 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "VideoUploadViewModel")
 
     // MARK: - Dependencies
-    private let networkMonitor = NetworkMonitor.shared
-    private let videoProcessor = VideoProcessor()
+    private let networkMonitor: NetworkMonitor
+    private let videoProcessor: VideoProcessor
+    private let authService: AuthServiceProtocol
     private let storageManager: StorageManager
-    private let databaseManager: FirebaseDatabaseManager
+    private let databaseManager: ReelDB.Manager
 
     // MARK: - Initialization
-    init(storageManager: StorageManager, databaseManager: FirebaseDatabaseManager) {
-        self.storageManager = storageManager
-        self.databaseManager = databaseManager
-        setupNetworkMonitoring()
-    }
+    init(
+        authService: AuthServiceProtocol = FirebaseAuthService.shared,
+        storage: StorageManager = FirebaseStorageManager(),
+        database: ReelDB.Manager
+    ) {
+        self.authService = authService
+        self.storageManager = storage
+        self.databaseManager = database
+        self.networkMonitor = NetworkMonitor.shared
+        self.videoProcessor = VideoProcessor()
 
-    // Convenience initializer with default dependencies
-    convenience init() {
-        self.init(storageManager: FirebaseStorageManager(), databaseManager: FirebaseDatabaseManager.shared)
-    }
-
-    private func setupNetworkMonitoring() {
-        networkMonitor.startMonitoring { [weak self] status in
-            guard let self = self else { return }
-            self.networkStatus = status
+        // Defer network monitoring setup to avoid MainActor isolation issues
+        Task { @MainActor in
+            setupNetworkMonitoring()
         }
     }
 
+    // Convenience initializer that handles actor isolation
+    static func create() async -> VideoUploadViewModel {
+        let database = await FirebaseDatabaseManager.shared
+        return VideoUploadViewModel(
+            authService: FirebaseAuthService.shared,
+            storage: FirebaseStorageManager(),
+            database: database
+        )
+    }
+
     // MARK: - VideoUploadViewModelProtocol Implementation
+    @MainActor
     public func setSelectedVideos(urls: [URL]) {
         selectedVideoURLs = urls
         uploadStatuses = Dictionary(uniqueKeysWithValues: urls.map { ($0, .pending) })
@@ -77,18 +88,7 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
     }
 
     public func setError(_ error: PublicUploadError) {
-        switch error {
-        case .videoProcessingFailed(let reason):
-            errorMessage = "Failed to process video: \(reason)"
-        case .networkUnavailable:
-            errorMessage = "Network is unavailable"
-        case .storageError:
-            errorMessage = "Storage error occurred"
-        case .networkError:
-            errorMessage = "Network error occurred"
-        case .unknownError:
-            errorMessage = "An unknown error occurred"
-        }
+        errorMessage = error.localizedDescription
     }
 
     @MainActor
@@ -99,7 +99,7 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
                 return
             }
 
-            guard NetworkMonitor.shared.isConnected else {
+            guard networkMonitor.isConnected else {
                 setError(.networkUnavailable)
                 return
             }
@@ -113,94 +113,67 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
                 }
 
                 // Update UI to show we're processing this video
-                uploadStatuses[url] = .uploading(progress: 0.0)
-
-                var encounteredError: Error?
-                // Process and upload video in background
-                await withTaskGroup(of: Result<URL, Error>.self) { group in
-                    group.addTask { [self] in
-                        do {
-                            await MainActor.run {
-                                uploadStatuses[url] = .uploading(progress: 0.0)
-                            }
-                            let _ = try await processAndUploadVideo(at: url, index: index)
-                            if let downloadURL = await uploadedVideoURLs.last {
-                                return .success(downloadURL)
-                            } else {
-                                return .failure(PublicUploadError.unknownError)
-                            }
-                        } catch {
-                            await MainActor.run {
-                                uploadStatuses[url] = .failed(error)
-                                logger.error("Failed to upload video: \(error.localizedDescription)")
-                            }
-                            return .failure(error)
-                        }
-                    }
-
-                    // Wait for task completion and handle result
-                    for await result in group {
-                        switch result {
-                        case .success(let downloadURL):
-                            await MainActor.run {
-                                successCount += 1
-                                uploadStatuses[url] = .completed(downloadURL)
-                            }
-                        case .failure(let error):
-                            await MainActor.run {
-                                failedCount += 1
-                                uploadStatuses[url] = .failed(error)
-                                logger.error("Failed to upload video: \(error.localizedDescription)")
-                            }
-                            encounteredError = error
-                        }
-                    }
+                await MainActor.run {
+                    uploadStatuses[url] = .uploading(progress: 0.0)
                 }
 
-                if encounteredError != nil {
+                do {
+                    let downloadURL = try await processAndUploadVideo(at: url, index: index)
+                    await MainActor.run {
+                        successCount += 1
+                        uploadStatuses[url] = .completed(downloadURL)
+                        uploadedVideoURLs.append(downloadURL)
+                    }
+                } catch {
+                    await MainActor.run {
+                        failedCount += 1
+                        uploadStatuses[url] = .failed(error)
+                        logger.error("Failed to upload video: \(error.localizedDescription)")
+                    }
                     break
                 }
             }
 
-            // Only navigate if we had at least one successful upload
-            if successCount > 0 {
-                // Clear successful uploads but keep failed ones
-                selectedVideoURLs = selectedVideoURLs.filter { url in
-                    if case .failed = uploadStatuses[url] {
-                        return true
-                    }
-                    return false
-                }
-                thumbnails = thumbnails.filter { url, _ in
-                    if case .failed = uploadStatuses[url] {
-                        return true
-                    }
-                    return false
-                }
-                captions = captions.filter { url, _ in
-                    if case .failed = uploadStatuses[url] {
-                        return true
-                    }
-                    return false
-                }
-                uploadStatuses = uploadStatuses.filter { url, status in
-                    if case .failed = status {
-                        return true
-                    }
-                    return false
-                }
+            await MainActor.run {
+                handleUploadCompletion(successCount: successCount, failedCount: failedCount)
+            }
+        }
+    }
 
-                // Set success message and navigate
-                let message = successCount == 1 ? "Video uploaded successfully!" :
-                             "Successfully uploaded \(successCount) videos!"
-                successMessage = message
-                shouldNavigateToProfile = true
+    private func handleUploadCompletion(successCount: Int, failedCount: Int) {
+        if successCount > 0 {
+            // Clear successful uploads but keep failed ones
+            selectedVideoURLs = selectedVideoURLs.filter { url in
+                if case .failed = uploadStatuses[url] { return true }
+                return false
             }
 
-            // Reset Create tab state if all uploads completed
-            if failedCount == 0 {
-                resetState()
-            }
+            cleanupSuccessfulUploads()
+
+            // Set success message and navigate
+            successMessage = successCount == 1 ? "Video uploaded successfully!" :
+                           "Successfully uploaded \(successCount) videos!"
+            shouldNavigateToProfile = true
+        }
+
+        // Reset Create tab state if all uploads completed
+        if failedCount == 0 {
+            resetState()
+        }
+    }
+
+    private func cleanupSuccessfulUploads() {
+        thumbnails = thumbnails.filter { url, _ in
+            if case .failed = uploadStatuses[url] { return true }
+            return false
+        }
+        captions = captions.filter { url, _ in
+            if case .failed = uploadStatuses[url] { return true }
+            return false
+        }
+        uploadStatuses = uploadStatuses.filter { url, status in
+            if case .failed = status { return true }
+            return false
         }
     }
 
@@ -322,6 +295,13 @@ final class VideoUploadViewModel: ObservableObject, VideoUploadViewModelProtocol
 
     private func resetState() {
         // Implementation of resetState method
+    }
+
+    private func setupNetworkMonitoring() {
+        networkMonitor.startMonitoring { [weak self] status in
+            guard let self = self else { return }
+            self.networkStatus = status
+        }
     }
 }
 

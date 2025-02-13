@@ -6,7 +6,9 @@ import FirebaseStorage
 import os
 
 /// Manages profile data and video content for a user
+/// @deprecated Use `ProfileActorViewModel` instead. This class will be removed in a future update.
 @MainActor
+@available(*, deprecated, message: "Use ProfileActorViewModel instead")
 class ProfileViewModel: ObservableObject {
     // MARK: - Published Properties
     @Published private(set) var videos: [Video] = []
@@ -24,13 +26,13 @@ class ProfileViewModel: ObservableObject {
     // MARK: - Dependencies
     let authService: AuthServiceProtocol
     let storageManager: StorageManager
-    let databaseManager: DatabaseManager
+    let databaseManager: ReelDB.Manager
 
     // MARK: - Initialization
     init(
         authService: AuthServiceProtocol,
         storage: StorageManager,
-        database: DatabaseManager
+        database: ReelDB.Manager
     ) {
         self.authService = authService
         self.storageManager = storage
@@ -85,43 +87,25 @@ class ProfileViewModel: ObservableObject {
     }
 
     private func updateProfile(with loadedProfile: UserProfile) async {
-        await MainActor.run {
-            logger.debug("🔄 Updating profile - Old photo URL: \(String(describing: self.profile.photoURL))")
-            logger.debug("🔄 New photo URL: \(String(describing: loadedProfile.photoURL))")
-
-            // Compare URLs including tokens to detect new versions
-            let hasPhotoChanged = {
-                guard let oldURL = self.profile.photoURL,
-                      let newURL = loadedProfile.photoURL else {
-                    let changed = self.profile.photoURL?.absoluteString != loadedProfile.photoURL?.absoluteString
-                    logger.debug("📊 URL comparison (nil case) - Changed: \(changed)")
-                    return changed
-                }
-
-                // Compare full URLs including tokens
-                let changed = oldURL.absoluteString != newURL.absoluteString
-                logger.debug("📊 URL comparison:")
-                logger.debug("- Old URL: \(oldURL)")
-                logger.debug("- New URL: \(newURL)")
-                logger.debug("- Changed: \(changed)")
-                return changed
-            }()
-
-            self.profile = loadedProfile
-            objectWillChange.send()
-            logger.debug("📢 Sent objectWillChange")
-
-            // Only post notification if the photo URL actually changed
-            if hasPhotoChanged {
-                logger.debug("🖼️ Photo URL changed, posting notification")
-                NotificationCenter.default.post(
-                    name: Notification.Name("ProfilePhotoUpdated"),
-                    object: loadedProfile.photoURL
-                )
-                logger.debug("✅ Posted ProfilePhotoUpdated notification with URL: \(String(describing: loadedProfile.photoURL))")
-            } else {
-                logger.debug("ℹ️ Photo URL unchanged, skipping notification")
+        // Compare URLs including tokens to detect new versions
+        let hasPhotoChanged = {
+            guard let oldURL = self.profile.photoURL,
+                  let newURL = loadedProfile.photoURL else {
+                return self.profile.photoURL?.absoluteString != loadedProfile.photoURL?.absoluteString
             }
+            return oldURL.absoluteString != newURL.absoluteString
+        }()
+
+        self.profile = loadedProfile
+        objectWillChange.send()
+
+        // Only post notification if the photo URL actually changed
+        if hasPhotoChanged {
+            logger.debug("🖼️ Profile photo URL updated, triggering refresh")
+            NotificationCenter.default.post(
+                name: Notification.Name("ProfilePhotoUpdated"),
+                object: loadedProfile.photoURL
+            )
         }
     }
 
@@ -151,13 +135,10 @@ class ProfileViewModel: ObservableObject {
             let updatedProfile = try await profileManager.loadProfile()
             logger.debug("✅ Loaded updated profile with photo URL: \(String(describing: updatedProfile.photoURL))")
 
-            // If no photo URL exists, create a default one
-            if updatedProfile.photoURL == nil {
-                logger.debug("⚠️ No photo URL found, creating default profile photo")
-                if let defaultImageData = UIImage(systemName: "person.circle.fill")?.jpegData(compressionQuality: 0.8) {
-                    try await updateProfilePhoto(defaultImageData)
+            // Only create default photo if we haven't just uploaded one
+            if updatedProfile.photoURL == nil && !isPhotoBeingProcessed {
+                logger.debug("⚠️ No photo URL found and no upload in progress")
                     return
-                }
             }
 
             await updateProfile(with: updatedProfile)
@@ -166,8 +147,14 @@ class ProfileViewModel: ObservableObject {
         }
     }
 
+    // Track photo processing state
+    private var isPhotoBeingProcessed = false
+
     // Helper method to update profile photo
     private func updateProfilePhoto(_ imageData: Data) async throws {
+        isPhotoBeingProcessed = true
+        defer { isPhotoBeingProcessed = false }
+
         guard let userId = authService.currentUser?.uid else { return }
 
         let url = try await storageManager.uploadProfilePhoto(imageData, userId: userId)
@@ -238,21 +225,31 @@ class ProfileViewModel: ObservableObject {
     }
 
     // MARK: - Convenience Initializer
-    convenience init(authService: AuthServiceProtocol) {
+    static func create() async -> ProfileViewModel {
+        let database = await FirebaseDatabaseManager.shared
+        return ProfileViewModel(
+            authService: FirebaseAuthService.shared,
+            storage: FirebaseStorageManager(),
+            database: database
+        )
+    }
+
+    convenience init(authService: AuthServiceProtocol) async {
+        let database = await FirebaseDatabaseManager.shared
         self.init(
             authService: authService,
             storage: FirebaseStorageManager(),
-            database: FirebaseDatabaseManager.shared
+            database: database
         )
     }
 }
 
 // MARK: - Profile Manager
 private actor ProfileManager {
-    private let database: DatabaseManager
+    private let database: ReelDB.Manager
     private let auth: AuthServiceProtocol
 
-    init(database: DatabaseManager, auth: AuthServiceProtocol) {
+    init(database: ReelDB.Manager, auth: AuthServiceProtocol) {
         self.database = database
         self.auth = auth
     }
@@ -267,10 +264,10 @@ private actor ProfileManager {
 
 // MARK: - Video Loader
 private actor ProfileVideoLoader {
-    private let database: DatabaseManager
+    private let database: ReelDB.Manager
     private let logger: Logger
 
-    init(database: DatabaseManager, logger: Logger) {
+    init(database: ReelDB.Manager, logger: Logger) {
         self.database = database
         self.logger = logger
     }

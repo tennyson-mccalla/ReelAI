@@ -2,10 +2,20 @@ import SwiftUI
 import PhotosUI
 
 struct VideoUploadView: View {
-    @StateObject private var viewModel = VideoUploadViewModel()
+    @StateObject private var viewModel: VideoUploadViewModel
     @State private var showingPhotoPicker = false
     @Environment(\.dismiss) private var dismiss
     @State private var showingQualityPicker = false
+
+    init() {
+        // Initialize with default dependencies, the view model will handle async setup
+        let viewModel = VideoUploadViewModel(
+            authService: FirebaseAuthService.shared,
+            storage: FirebaseStorageManager(),
+            database: FirebaseDatabaseManager.shared
+        )
+        _viewModel = StateObject(wrappedValue: viewModel)
+    }
 
     var body: some View {
         ScrollView {

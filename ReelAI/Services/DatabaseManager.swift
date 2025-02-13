@@ -11,4 +11,5 @@ protocol DatabaseManager {
     func restoreVideo(_ videoId: String) async throws
     func updateVideoPrivacy(_ videoId: String, privacyLevel: Video.PrivacyLevel) async throws
     func updateVideoMetadata(_ videoId: String, caption: String) async throws
+    func updateProfilePhoto(userId: String, photoURL: URL) async throws
 }

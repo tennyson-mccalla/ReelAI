@@ -10,6 +10,7 @@ class FeedPaginator {
     private let database: DatabaseReference
     private var lastFetchedTimestamp: Date?
     private let batchSize = 10
+    private var processedVideoCache: [String: Video] = [:]
 
     init() {
         self.database = Database.database().reference()
@@ -25,14 +26,11 @@ class FeedPaginator {
 
         if let lastTimestamp = lastFetchedTimestamp {
             query = query.queryEnding(beforeValue: lastTimestamp.timeIntervalSince1970)
-            logger.debug("⏱️ Fetching videos before timestamp: \(lastTimestamp)")
         }
 
         query = query.queryLimited(toLast: UInt(batchSize))
-        // Keep this query synced for offline access
         query.keepSynced(true)
 
-        logger.debug("🔍 Executing query for \(self.batchSize) videos")
         let snapshot = try await query.getData()
 
         guard let value = snapshot.value as? [String: [String: Any]] else {
@@ -46,23 +44,26 @@ class FeedPaginator {
                          userInfo: [NSLocalizedDescriptionKey: "Invalid data structure in Firebase"])
         }
 
-        logger.debug("📦 Processing \(value.count) video entries")
-
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .secondsSince1970
 
         let processedVideos = try await withThrowingTaskGroup(of: ProcessedVideoResult.self) { group in
-            // Spawn tasks
+            // Only process videos that haven't been cached
             for (key, dict) in value {
-                group.addTask { [weak self] in
-                    guard let self = self else {
-                        return .skipped(key)
+                if let cachedVideo = processedVideoCache[key] {
+                    group.addTask {
+                        return .success(cachedVideo)
                     }
-                    return try await self.processVideoEntry(key: key, dict: dict, decoder: decoder)
+                } else {
+                    group.addTask { [weak self] in
+                        guard let self = self else {
+                            return .skipped(key)
+                        }
+                        return try await self.processVideoEntry(key: key, dict: dict, decoder: decoder)
+                    }
                 }
             }
 
-            // Collect results
             var videos: [Video] = []
             var skippedVideos: [String] = []
 
@@ -70,6 +71,7 @@ class FeedPaginator {
                 switch result {
                 case .success(let video):
                     videos.append(video)
+                    processedVideoCache[video.id] = video
                 case .skipped(let videoId):
                     skippedVideos.append(videoId)
                 }
@@ -109,33 +111,22 @@ class FeedPaginator {
             let thumbnailName = videoName.hasSuffix(".jpg") ? videoName : videoName.replacingOccurrences(of: ".mp4", with: "") + ".jpg"
             let thumbnailRef = storage.reference().child("thumbnails/\(thumbnailName)")
 
-            logger.debug("🎬 Processing video: \(videoName)")
+            // Get URLs serially to prevent concurrent requests
+            let url = try await videoRef.downloadURL()
+            videoDict["videoURL"] = url.absoluteString
 
-            // Get video URL
+            // Get thumbnail URL
             do {
-                let url = try await videoRef.downloadURL()
-                videoDict["videoURL"] = url.absoluteString
-                logger.debug("✅ Got video URL for \(key)")
-
-                // Try to get thumbnail URL
-                do {
-                    let thumbnailURL = try await thumbnailRef.downloadURL()
-                    videoDict["thumbnailURL"] = thumbnailURL.absoluteString
-                    logger.debug("✅ Got thumbnail URL for \(key)")
-                } catch {
-                    logger.debug("⚠️ No thumbnail for \(key): \(error.localizedDescription)")
-                    videoDict["thumbnailURL"] = nil
-                }
+                let thumbnailURL = try await thumbnailRef.downloadURL()
+                videoDict["thumbnailURL"] = thumbnailURL.absoluteString
             } catch {
-                logger.error("❌ Failed to get video URL for \(key): \(error.localizedDescription)")
-                return .skipped(key)
+                videoDict["thumbnailURL"] = nil
             }
 
             // Ensure timestamp exists and is a number
             if let timestamp = videoDict["timestamp"] as? TimeInterval {
                 videoDict["timestamp"] = timestamp
             } else {
-                logger.debug("⚠️ No timestamp for \(key), using current time")
                 videoDict["timestamp"] = Date().timeIntervalSince1970
             }
 
@@ -148,7 +139,6 @@ class FeedPaginator {
 
             let data = try JSONSerialization.data(withJSONObject: videoDict)
             let video = try decoder.decode(Video.self, from: data)
-            logger.debug("✅ Successfully processed video \(key)")
             return .success(video)
         } catch {
             logger.error("❌ Failed to process video \(key): \(error.localizedDescription)")

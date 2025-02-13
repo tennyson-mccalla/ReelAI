@@ -1,17 +1,22 @@
 import Foundation
 import SwiftUI
 import FirebaseAuth
+import os
+import PhotosUI
 
+/// @deprecated Use `ProfileActorViewModel` instead. This class will be removed in a future update.
 @MainActor
+@available(*, deprecated, message: "Use ProfileActorViewModel instead")
 final class EditProfileViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var error: Error?
     @Published var profile: UserProfile
 
-    private let storage: StorageManager
+    let storage: StorageManager
+    let databaseManager: DatabaseManager
     private let database: DatabaseManager
     private let authService: FirebaseAuthService
-    private let databaseManager: DatabaseManager
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "EditProfileViewModel")
 
     init(profile: UserProfile,
          storage: StorageManager,
@@ -37,41 +42,6 @@ final class EditProfileViewModel: ObservableObject {
 
             // Update profile in database
             try await databaseManager.updateProfile(profile)
-
-            // Force a sync to ensure we have latest data
-            try await forceSyncProfile()
-        } catch {
-            self.error = error
-            throw error
-        }
-    }
-
-    func updateProfilePhoto(_ imageData: Data) async throws {
-        guard let userId = authService.currentUser?.uid else {
-            throw ProfileError.notAuthenticated
-        }
-
-        isLoading = true
-        defer { isLoading = false }
-
-        do {
-            // Delete existing photo first
-            if profile.photoURL != nil {
-                try? await storage.deleteFile(at: "profile_photos/\(userId)/profile.jpg")
-            }
-
-            // Upload new photo
-            let url = try await storage.uploadProfilePhoto(imageData, userId: userId)
-
-            // Update profile with new URL
-            var updatedProfile = profile
-            updatedProfile.photoURL = url
-            try await databaseManager.updateProfile(updatedProfile)
-
-            // Update local state
-            await MainActor.run {
-                self.profile = updatedProfile
-            }
 
             // Force a sync to ensure we have latest data
             try await forceSyncProfile()

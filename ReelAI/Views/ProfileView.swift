@@ -3,12 +3,10 @@ import os  // For logging
 import FirebaseAuth  // For auth types
 import FirebaseStorage  // For Firebase Storage
 
+/// @deprecated Use `ProfileActorView` instead. This view will be removed in a future update.
+@available(*, deprecated, message: "Use ProfileActorView instead")
 struct ProfileView: View {
-    @StateObject private var viewModel = ProfileViewModel(
-        authService: FirebaseAuthService(),
-        storage: FirebaseStorageManager(),
-        database: FirebaseDatabaseManager.shared
-    )
+    @StateObject private var viewModel: ProfileViewModel
     @State private var isEditingProfile = false
     @State private var selectedVideoForEdit: Video?
     @State private var isSignedOut = false
@@ -23,6 +21,15 @@ struct ProfileView: View {
         GridItem(.flexible())
     ]
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfileView")
+
+    init() {
+        let dbManager: ReelDB.Manager = FirebaseDatabaseManager.shared
+        _viewModel = StateObject(wrappedValue: ProfileViewModel(
+            authService: FirebaseAuthService.shared,
+            storage: FirebaseStorageManager(),
+            database: dbManager
+        ))
+    }
 
     var body: some View {
         Group {
@@ -73,7 +80,7 @@ struct ProfileView: View {
                             profile: viewModel.profile,
                             storage: viewModel.storageManager,
                             databaseManager: viewModel.databaseManager,
-                            authService: FirebaseAuthService()
+                            authService: FirebaseAuthService.shared
                         )
                     }
                     .alert(isPresented: Binding<Bool>(
@@ -109,6 +116,9 @@ struct ProfileView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     profileOptionsMenu
                 }
+            }
+            .navigationDestination(item: $selectedVideoForEdit) { video in
+                VideoFeedView(initialVideo: video)
             }
         }
     }
@@ -188,7 +198,10 @@ struct ProfileView: View {
                 ProfileGridItem(
                     video: video,
                     selectedVideoForEdit: $selectedVideoForEdit,
-                    viewModel: viewModel
+                    viewModel: viewModel,
+                    onVideoTap: { video in
+                        selectedVideoForEdit = video
+                    }
                 )
                 .id("\(video.id)-\(video.isDeleted)-\(video.lastEditedAt?.timeIntervalSince1970 ?? 0)")
             }
@@ -203,7 +216,7 @@ private extension ProfileView {
         let video: Video
         @Binding var selectedVideoForEdit: Video?
         @ObservedObject var viewModel: ProfileViewModel
-        @State private var isShowingVideo = false
+        let onVideoTap: (Video) -> Void
         private let logger: Logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfileGridItem")
 
         var body: some View {
@@ -227,10 +240,7 @@ private extension ProfileView {
                 }
                 .onTapGesture {
                     guard !video.isDeleted else { return }
-                    isShowingVideo = true
-                }
-                .navigationDestination(isPresented: $isShowingVideo) {
-                    VideoFeedView(initialVideo: video)
+                    onVideoTap(video)
                 }
                 .contextMenu {
                     Button {
@@ -259,40 +269,62 @@ private extension ProfileView {
                         }
                     }
                 }
-                .onAppear {
-                    if video.isDeleted {
-                        logger.debug("🎭 Showing deleted overlay for video: \(video.id)")
-                    }
-                }
         }
     }
 
     private struct ProfilePhotoView: View {
         let photoURL: URL?
         let timestamp: Date
+        @State private var image: UIImage?
         @State private var isLoading = true
+        private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "ProfilePhotoView")
 
         var body: some View {
-            AsyncImage(url: photoURL) { phase in
-                switch phase {
-                case .empty:
-                    fallbackImage
-                        .overlay {
-                            ProgressView()
-                                .scaleEffect(1.5)
-                        }
-                case .success(let image):
-                    image
+            ZStack {
+                if let image = image {
+                    Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .transition(.opacity.animation(.easeInOut))
-                case .failure:
-                    fallbackImage
-                @unknown default:
+                        .background(Color(.systemBackground))
+                } else {
                     fallbackImage
                 }
+
+                if isLoading {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                }
             }
-            .id("\(photoURL?.absoluteString ?? "no-photo")-\(timestamp.timeIntervalSince1970)")
+            .task(id: "\(photoURL?.absoluteString ?? "")-\(timestamp.timeIntervalSince1970)") {
+                await loadImage()
+            }
+            .allowsHitTesting(false)
+            .accessibilityLabel("Profile photo")
+            .background(Color(.systemBackground))
+        }
+
+        private func loadImage() async {
+            guard let url = photoURL else {
+                isLoading = false
+                return
+            }
+
+            isLoading = true
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                if let loadedImage = UIImage(data: data) {
+                    await MainActor.run {
+                        self.image = loadedImage
+                        self.isLoading = false
+                    }
+                } else {
+                    logger.error("Failed to create image from data")
+                    isLoading = false
+                }
+            } catch {
+                logger.error("Failed to load profile photo: \(error.localizedDescription)")
+                isLoading = false
+            }
         }
 
         private var fallbackImage: some View {
@@ -301,6 +333,7 @@ private extension ProfileView {
                 .aspectRatio(contentMode: .fill)
                 .foregroundColor(.gray)
                 .opacity(0.8)
+                .background(Color(.systemBackground))
         }
     }
 }

@@ -6,11 +6,16 @@ protocol AuthServiceProtocol {
 }
 
 class FirebaseAuthService: AuthServiceProtocol {
+    // MARK: - Shared Instance
+    static let shared = FirebaseAuthService()
+
     var currentUser: User? {
         Auth.auth().currentUser
     }
-    
+
     func signOut() throws {
         try Auth.auth().signOut()
     }
+
+    private init() {}
 }

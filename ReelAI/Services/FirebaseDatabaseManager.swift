@@ -3,67 +3,82 @@ import FirebaseStorage
 import FirebaseAuth
 import os
 
-@MainActor
-final class FirebaseDatabaseManager: DatabaseManager {
-    @MainActor static let shared = FirebaseDatabaseManager()
-    private let db: DatabaseReference
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "DatabaseManager")
-    private let networkMonitor = NetworkMonitor.shared
-    private var isInitialFetch = true
+actor FirebaseDatabaseManager: ReelDB.Manager {
+    // MARK: - Shared Instance
+    private static let instance = FirebaseDatabaseManager()
 
-    private init() {
-        // Configure Firebase persistence with a size limit
-        Database.database().persistenceCacheSizeBytes = 100 * 1024 * 1024 // 100MB limit for better caching
-        Database.database().isPersistenceEnabled = true
-        db = Database.database().reference()
-
-        // Keep the database connection alive
-        db.keepSynced(true)
-
-        // Setup initial listeners for key paths to maintain disk cache
-        setupInitialListeners()
-        setupDatabaseConnection()
+    static var shared: any ReelDB.Manager {
+        get async {
+            return await instance
+        }
     }
 
-    private func setupInitialListeners() {
+    // MARK: - Protocol Requirements
+    nonisolated let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "DatabaseManager")
+    nonisolated let databaseRef: DatabaseReference = Database.database().reference()
+
+    // MARK: - Private Properties
+    private nonisolated let networkMonitor = NetworkMonitor.shared
+    private var isInitialFetch = true
+    private var isConfigured = false
+
+    private init() {
+        // Configure Firebase persistence synchronously during initialization
+        Database.database().persistenceCacheSizeBytes = 100 * 1024 * 1024
+        Database.database().isPersistenceEnabled = true
+
+        // Start async configuration
+        Task {
+            await configure()
+        }
+    }
+
+    nonisolated func configure() async {
+        // Configure Firebase persistence with a size limit
+        Database.database().persistenceCacheSizeBytes = 100 * 1024 * 1024 // 100MB limit
+        Database.database().isPersistenceEnabled = true
+
+        // Keep the database reference synchronized
+        databaseRef.keepSynced(true)
+
+        // Setup connection handling
+        await setupDatabaseConnection()
+    }
+
+    nonisolated func setupDatabaseConnection() async {
+        // Start with online mode
+        databaseRef.database.goOnline()
+
+        await networkMonitor.startMonitoring { [weak self] status in
+            guard let self = self else { return }
+            Task { @MainActor in
+                switch status {
+                case .satisfied:
+                    self.logger.debug("✅ Network available, enabling database")
+                    self.databaseRef.database.goOnline()
+                    NotificationCenter.default.post(name: .databaseConnectionEstablished, object: nil)
+                case .unsatisfied:
+                    self.logger.warning("⚠️ Network unavailable, database going offline")
+                    self.databaseRef.database.goOffline()
+                default:
+                    break
+                }
+            }
+        }
+    }
+
+    private func setupInitialListeners() async {
         // Setup a small limit listener to maintain cache
-        db.child("videos")
+        databaseRef.child("videos")
             .queryLimited(toLast: 5)
             .observe(.value) { [weak self] snapshot in
                 self?.logger.debug("🔄 Background sync: \(snapshot.childrenCount) videos")
             }
     }
 
-    private func setupDatabaseConnection() {
-        // Start with online mode
-        db.database.goOnline()
-
-        networkMonitor.startMonitoring { [weak self] status in
-            guard let self = self else { return }
-            switch status {
-            case .satisfied:
-                self.logger.debug("✅ Network available, enabling database")
-                self.db.database.goOnline()
-
-                // Only purge if not initial connection
-                if !self.isInitialFetch {
-                    Database.database().purgeOutstandingWrites()
-                }
-                self.isInitialFetch = false
-
-                NotificationCenter.default.post(name: .databaseConnectionEstablished, object: nil)
-            case .unsatisfied:
-                self.logger.warning("⚠️ Network unavailable, database going offline")
-                self.db.database.goOffline()
-            default:
-                break
-            }
-        }
-    }
-
-    // Convert DatabaseError to NetworkErrorType
+    // Convert ReelDB.Error to NetworkErrorType
     private func handleDatabaseError(_ error: Error) -> NetworkErrorType {
-        if let dbError = error as? DatabaseError {
+        if let dbError = error as? ReelDB.Error {
             switch dbError {
             case .offline:
                 return .connectionLost
@@ -71,22 +86,36 @@ final class FirebaseDatabaseManager: DatabaseManager {
                 return .unauthorized
             case .invalidData:
                 return .serverError
+            default:
+                return .serverError
             }
         }
         return (error as NSError).networkErrorType
     }
 
     // Add error handling helper
-    private func handleError(_ error: Error, operation: String) {
-        _ = handleDatabaseError(error)  // Ignore the return value since we're just logging
+    nonisolated func handleError(_ error: Error, operation: String) {
         logger.error("❌ \(operation) failed with error: \(error.localizedDescription)")
-        NetworkErrorHandler.handle(error,
-            retryAction: { [weak self] in
-                self?.logger.debug("🔄 Will retry \(operation)")
-            },
-            fallbackAction: { [weak self] in
-                self?.logger.error("❌ \(operation) failed, using fallback")
-            })
+        if let dbError = error as? ReelDB.Error {
+            switch dbError {
+            case .invalidData:
+                logger.error("❌ Invalid data in \(operation): \(error.localizedDescription)")
+            case .notAuthenticated:
+                logger.error("❌ Authentication required for \(operation)")
+            case .offline:
+                logger.error("❌ Device is offline during \(operation)")
+            case .permissionDenied:
+                logger.error("❌ Permission denied for \(operation)")
+            case .invalidPath:
+                logger.error("❌ Invalid database path in \(operation)")
+            case .networkError(let underlying):
+                logger.error("❌ Network error in \(operation): \(underlying.localizedDescription)")
+            case .encodingError(let underlying):
+                logger.error("❌ Encoding error in \(operation): \(underlying.localizedDescription)")
+            case .decodingError(let underlying):
+                logger.error("❌ Decoding error in \(operation): \(underlying.localizedDescription)")
+            }
+        }
     }
 
     // Sendable-compliant struct for database updates
@@ -116,52 +145,51 @@ final class FirebaseDatabaseManager: DatabaseManager {
     private struct VideoUpdateData: Codable, Sendable {
         let id: String
         let isDeleted: Bool
-        let lastEditedAt: Int
+        let lastEditedAt: Int64
 
         init(id: String, isDeleted: Bool) {
             self.id = id
             self.isDeleted = isDeleted
-            self.lastEditedAt = Int(Date().timeIntervalSince1970 * 1000)
+            self.lastEditedAt = Int64(Date().timeIntervalSince1970 * 1000)
         }
     }
 
     private struct VideoCaptionUpdate: Codable, Sendable {
         let caption: String
-        let lastEditedAt: Int
+        let lastEditedAt: Int64
 
         init(caption: String) {
             self.caption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
-            self.lastEditedAt = Int(Date().timeIntervalSince1970 * 1000)
+            self.lastEditedAt = Int64(Date().timeIntervalSince1970 * 1000)
         }
     }
 
     // Helper method for safe JSON conversion
-    @MainActor
     private func convertToDict<T: Encodable>(_ value: T) throws -> [String: Any] {
         let data = try JSONEncoder().encode(value)
         return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
 
-    @MainActor
     func updateProfile(_ profile: UserProfile) async throws {
         let updateData = ProfileUpdateData(from: profile)
         let update = DatabaseUpdate(path: "users/\(profile.id)", value: updateData)
         let dict = try convertToDict(update.value)
+        let dbRef = self.databaseRef
 
         do {
-            try await db.child(update.path).updateChildValues(dict)
+            try await dbRef.child(update.path).updateChildValues(dict)
         } catch {
             handleError(error, operation: "Update profile")
             throw error
         }
     }
 
-    @MainActor
     func fetchProfile(userId: String) async throws -> UserProfile {
+        let dbRef = self.databaseRef
         do {
-            let snapshot = try await db.child("users").child(userId).getData()
+            let snapshot = try await dbRef.child("users").child(userId).getData()
             guard var data = snapshot.value as? [String: Any] else {
-                throw DatabaseError.invalidData
+                throw ReelDB.Error.invalidData
             }
 
             // Ensure all required fields exist with defaults
@@ -191,11 +219,10 @@ final class FirebaseDatabaseManager: DatabaseManager {
         }
     }
 
-    @MainActor
     func updateVideo(_ video: Video) async throws {
         guard let userId = video.userId else {
             logger.error("❌ No userId provided in video data")
-            throw DatabaseError.invalidData
+            throw ReelDB.Error.invalidData
         }
 
         // Debug auth state
@@ -204,8 +231,10 @@ final class FirebaseDatabaseManager: DatabaseManager {
             logger.debug("🔄 Video userId: \(userId), Current user: \(currentUser.uid)")
         } else {
             logger.error("❌ No authenticated user found when attempting database write")
-            throw DatabaseError.notAuthenticated
+            throw ReelDB.Error.notAuthenticated
         }
+
+        let dbRef = self.databaseRef
 
         // Create a safe ID by removing any invalid characters
         let safeId = video.id.replacingOccurrences(of: ".", with: "-")
@@ -219,10 +248,13 @@ final class FirebaseDatabaseManager: DatabaseManager {
         let videoName = video.videoURL.lastPathComponent
         logger.debug("📹 Video name: \(videoName)")
 
-        // Ensure all required fields are present and properly formatted
+        // Fix the ambiguous type annotations
+        let timestamp: [String: Any] = ReelDB.Utils.serverTimestamp()
+
+        // In updateVideo method
         let videoData: [String: Any] = [
             "userId": userId,
-            "timestamp": ServerValue.timestamp(),
+            "timestamp": timestamp,
             "caption": video.caption,
             "likes": video.likes,
             "comments": video.comments,
@@ -235,7 +267,7 @@ final class FirebaseDatabaseManager: DatabaseManager {
         logger.debug("🔗 Writing to database path: videos/\(safeId)")
 
         do {
-            try await db.child("videos").child(safeId).setValue(videoData)
+            try await dbRef.child("videos").child(safeId).setValue(videoData)
             logger.debug("✅ Video data successfully written to database")
         } catch {
             handleError(error, operation: "Database write")
@@ -244,18 +276,19 @@ final class FirebaseDatabaseManager: DatabaseManager {
     }
 
     func deleteVideo(id: String) async throws {
-        try await db.child("videos").child(id).removeValue()
+        let dbRef = self.databaseRef
+        try await dbRef.child("videos").child(id).removeValue()
     }
 
-    @MainActor
     func softDeleteVideo(_ videoId: String) async throws {
+        let dbRef = self.databaseRef
         logger.debug("🗑️ DatabaseManager: Starting soft delete for video: \(videoId)")
 
         let updateData = VideoUpdateData(id: videoId, isDeleted: true)
         let update = DatabaseUpdate(path: "videos/\(videoId)", value: updateData)
         let dict = try convertToDict(update.value)
         do {
-            try await db.child(update.path).updateChildValues(dict)
+            try await dbRef.child(update.path).updateChildValues(dict)
             logger.debug("✅ DatabaseManager: Video marked as deleted in database")
         } catch {
             handleError(error, operation: "Soft delete video")
@@ -263,15 +296,15 @@ final class FirebaseDatabaseManager: DatabaseManager {
         }
     }
 
-    @MainActor
     func restoreVideo(_ videoId: String) async throws {
+        let dbRef = self.databaseRef
         logger.debug("🔄 DatabaseManager: Starting restore for video: \(videoId)")
 
         let updateData = VideoUpdateData(id: videoId, isDeleted: false)
         let update = DatabaseUpdate(path: "videos/\(videoId)", value: updateData)
         let dict = try convertToDict(update.value)
         do {
-            try await db.child(update.path).updateChildValues(dict)
+            try await dbRef.child(update.path).updateChildValues(dict)
             logger.debug("✅ DatabaseManager: Video restored in database")
         } catch {
             handleError(error, operation: "Restore video")
@@ -279,8 +312,8 @@ final class FirebaseDatabaseManager: DatabaseManager {
         }
     }
 
-    @MainActor
     func updateVideoPrivacy(_ videoId: String, privacyLevel: Video.PrivacyLevel) async throws {
+        let dbRef = self.databaseRef
         logger.debug("🔒 Attempting to update privacy for video: \(videoId) to \(String(describing: privacyLevel))")
 
         let update = VideoPrivacyUpdate(
@@ -288,9 +321,11 @@ final class FirebaseDatabaseManager: DatabaseManager {
             privacyLevel: privacyLevel,
             lastEditedAt: Date()
         )
-        let dict = try convertToDict(update)
+        var dict = try ReelDB.Utils.convertToDict(update) as [String: Any]
+        let timestamp: [String: Any] = ReelDB.Utils.serverTimestamp()
+        dict["timestamp"] = timestamp
         do {
-            try await db.child("videos").child(videoId).updateChildValues(dict)
+            try await dbRef.child("videos").child(videoId).updateChildValues(dict)
             logger.debug("✅ Privacy updated in database")
         } catch {
             handleError(error, operation: "Update video privacy")
@@ -298,15 +333,15 @@ final class FirebaseDatabaseManager: DatabaseManager {
         }
     }
 
-    @MainActor
     func updateVideoMetadata(_ videoId: String, caption: String) async throws {
+        let dbRef = self.databaseRef
         logger.debug("📝 Attempting to update caption for video: \(videoId)")
 
         let updateData = VideoCaptionUpdate(caption: caption)
         let update = DatabaseUpdate(path: "videos/\(videoId)", value: updateData)
         let dict = try convertToDict(update.value)
         do {
-            try await db.child(update.path).updateChildValues(dict)
+            try await dbRef.child(update.path).updateChildValues(dict)
             logger.debug("✅ Caption updated in database")
         } catch {
             handleError(error, operation: "Update video metadata")
@@ -314,12 +349,12 @@ final class FirebaseDatabaseManager: DatabaseManager {
         }
     }
 
-    @MainActor
     func fetchVideos(limit: Int, after key: String?) async throws -> [Video] {
+        let dbRef = self.databaseRef
         logger.debug("📥 Fetching videos from database")
 
         // Create a reference that we'll keep synced
-        let videosQuery = db.child("videos")
+        let videosQuery = dbRef.child("videos")
             .queryOrdered(byChild: "timestamp")
             .queryLimited(toLast: UInt(limit))
 
@@ -355,21 +390,17 @@ final class FirebaseDatabaseManager: DatabaseManager {
                         // Check if video exists and get URL
                         let videoURL = try await videoRef.downloadURL()
                         mutableData["videoURL"] = videoURL.absoluteString
-                        logger.debug("✅ Got video URL for \(id): \(videoURL.absoluteString)")
 
                         // Try to get thumbnail URL if it exists
                         do {
                             let thumbnailURL = try await thumbnailRef.downloadURL()
                             mutableData["thumbnailURL"] = thumbnailURL.absoluteString
-                            logger.debug("✅ Got thumbnail URL for \(id): \(thumbnailURL.absoluteString)")
                         } catch {
-                            logger.debug("⚠️ No thumbnail found for video \(id): \(error.localizedDescription)")
                             mutableData["thumbnailURL"] = nil
                         }
 
                         // Ensure required fields exist with defaults
                         if mutableData["timestamp"] == nil {
-                            logger.debug("⚠️ No timestamp found for video \(id), using current time")
                             mutableData["timestamp"] = Date().timeIntervalSince1970 * 1000
                         }
 
@@ -383,9 +414,8 @@ final class FirebaseDatabaseManager: DatabaseManager {
                         let jsonData = try JSONSerialization.data(withJSONObject: mutableData)
                         let video = try JSONDecoder().decode(Video.self, from: jsonData)
                         videos.append(video)
-                        logger.debug("✅ Successfully processed video \(id)")
                     } catch {
-                        logger.error("❌ Failed to process video \(id): \(error.localizedDescription)")
+                        logger.error("Failed to process video \(id): \(error.localizedDescription)")
                         continue
                     }
                 } else {
@@ -402,10 +432,98 @@ final class FirebaseDatabaseManager: DatabaseManager {
         }
     }
 
-    enum DatabaseError: Error {
-        case invalidData
-        case notAuthenticated
-        case offline
+    // Helper method to debug data structure
+    private func debugDataStructure(_ data: [String: Any], prefix: String = "") {
+        logger.debug("🔍 Data Structure:")
+        for (key, value) in data {
+            if let nestedDict = value as? [String: Any] {
+                logger.debug("\(prefix)[\(key)]")
+                debugDataStructure(nestedDict, prefix: prefix + "  ")
+            } else {
+                logger.debug("\(prefix)\(key): \(value)")
+            }
+        }
+    }
+
+    func updateProfilePhoto(userId: String, photoURL: URL) async throws {
+        let dbRef = self.databaseRef
+        logger.debug("📸 Updating profile photo URL for user: \(userId)")
+
+        // Verify user is authenticated and has permission
+        guard let currentUser = Auth.auth().currentUser else {
+            logger.error("❌ No authenticated user found")
+            throw ReelDB.Error.notAuthenticated
+        }
+
+        guard currentUser.uid == userId else {
+            logger.error("❌ User does not have permission to update this profile")
+            throw ReelDB.Error.permissionDenied
+        }
+
+        // Reference directly to the user's node
+        let userRef = dbRef.child("users").child(userId)
+
+        // First fetch the current profile to ensure it exists
+        let snapshot = try await userRef.getData()
+        guard snapshot.exists() else {
+            logger.error("❌ User profile does not exist")
+            throw ReelDB.Error.invalidData
+        }
+
+        // Log current profile data
+        if let userData = snapshot.value as? [String: Any] {
+            logger.debug("📸 Current user data structure:")
+            for (key, value) in userData {
+                logger.debug("  \(key): \(value)")
+            }
+        }
+
+        // In updateProfilePhoto method
+        let timestamp: [String: Any] = ReelDB.Utils.serverTimestamp()
+        let update: [String: Any] = [
+            "photoURL": photoURL.absoluteString,
+            "lastUpdated": timestamp
+        ]
+
+        do {
+            // Update the profile
+            try await userRef.updateChildValues(update)
+            logger.debug("✅ Profile photo URL update operation completed")
+
+            // Fetch and verify the updated profile
+            let verifySnapshot = try await userRef.getData()
+            guard let userData = verifySnapshot.value as? [String: Any] else {
+                logger.error("❌ Could not read user data")
+                throw ReelDB.Error.invalidData
+            }
+
+            // Extract and verify the photoURL
+            guard let updatedPhotoURL = userData["photoURL"] as? String else {
+                logger.error("❌ Could not find photoURL in user data")
+                logger.debug("📸 Available fields:")
+                for (key, value) in userData {
+                    logger.debug("  \(key): \(value)")
+                }
+                throw ReelDB.Error.invalidData
+            }
+
+            logger.debug("✅ Verified photo URL in database: \(updatedPhotoURL)")
+
+            // Notify UI to refresh
+            await MainActor.run {
+                NotificationCenter.default.post(
+                    name: Notification.Name("ProfilePhotoUpdated"),
+                    object: URL(string: updatedPhotoURL)
+                )
+            }
+        } catch {
+            logger.error("❌ Failed to update profile photo: \(error.localizedDescription)")
+            if let dbError = error as? ReelDB.Error {
+                logger.error("❌ Database error type: \(String(describing: dbError))")
+            }
+            handleError(error, operation: "Update profile photo")
+            throw error
+        }
     }
 }
 
@@ -413,12 +531,12 @@ final class FirebaseDatabaseManager: DatabaseManager {
 private struct VideoPrivacyUpdate: Codable, Sendable {
     let id: String
     let privacyLevel: Video.PrivacyLevel
-    let lastEditedAt: Date
+    let lastEditedAt: Int64
 
-    enum CodingKeys: String, CodingKey {
-        case id
-        case privacyLevel
-        case lastEditedAt
+    init(id: String, privacyLevel: Video.PrivacyLevel, lastEditedAt: Date) {
+        self.id = id
+        self.privacyLevel = privacyLevel
+        self.lastEditedAt = Int64(lastEditedAt.timeIntervalSince1970 * 1000)
     }
 }
 
