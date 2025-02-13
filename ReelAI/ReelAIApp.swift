@@ -86,7 +86,7 @@ struct ReelAIApp: App {
                             }
 
                             NavigationStack {
-                                ProfileView()
+                                ProfileTestView()
                             }
                             .tabItem {
                                 Label("Profile", systemImage: "person.circle.fill")

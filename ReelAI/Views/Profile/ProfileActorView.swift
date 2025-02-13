@@ -82,6 +82,8 @@ struct ProfileActorView: View {
         }
     }
 
+    // MARK: - Profile Photo
+
     private var profilePhoto: some View {
         Group {
             if let photoURL = viewModel.profile.photoURL {
