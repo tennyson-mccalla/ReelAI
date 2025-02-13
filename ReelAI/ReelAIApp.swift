@@ -8,6 +8,7 @@
 import SwiftUI
 import FirebaseCore
 import FirebaseAuth
+import FirebaseDatabase
 import os
 
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -17,9 +18,50 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        logger.debug("🚀 Initializing app")
-        FirebaseApp.configure()
-        return true
+        logger.debug("🚀 Starting app initialization")
+
+        do {
+            // 1. Configure Firebase
+            FirebaseApp.configure()
+            logger.debug("✅ Firebase configured")
+
+            // 2. Initialize auth service which sets up persistence
+            _ = FirebaseAuthService.shared
+            logger.debug("✅ Auth service initialized")
+
+            // 3. Set up offline capabilities
+            Database.database().goOnline()
+
+            // 4. Add state change listener
+            Database.database().addServiceStateObserver { state in
+                switch state {
+                case .online:
+                    self.logger.debug("💚 Firebase connection: Online")
+                case .offline:
+                    self.logger.debug("🔸 Firebase connection: Offline")
+                case .restricted:
+                    self.logger.error("🔴 Firebase connection: Restricted")
+                @unknown default:
+                    self.logger.error("⚠️ Firebase connection: Unknown state")
+                }
+            }
+
+            logger.debug("✅ App initialization complete")
+            return true
+        } catch {
+            logger.error("🔴 Failed to initialize app: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        Database.database().goOffline()
+        logger.debug("📱 App entered background - Firebase connection closed")
+    }
+
+    func applicationWillEnterForeground(_ application: UIApplication) {
+        Database.database().goOnline()
+        logger.debug("📱 App entered foreground - Firebase connection restored")
     }
 }
 
