@@ -14,6 +14,7 @@ import os
 class AppDelegate: NSObject, UIApplicationDelegate {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "AppDelegate")
     private var connectedRef: DatabaseReference?
+    private var stateObserver: NSObjectProtocol?
 
     func application(
         _ application: UIApplication,
@@ -29,11 +30,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ = FirebaseAuthService.shared
         logger.debug("✅ Auth service initialized")
 
-        // 3. Set up offline capabilities
-        Database.database().goOnline()
-
-        // 4. Add connection state monitoring
-        setupConnectionStateMonitoring()
+        // 3. Set up offline capabilities and monitoring
+        setupConnectionHandling()
 
         logger.debug("✅ App initialization complete")
         return true
@@ -41,6 +39,29 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     private func configureFirebase() {
         FirebaseApp.configure()
+    }
+
+    private func setupConnectionHandling() {
+        // Set up notification observers for app state changes
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppWillEnterForeground),
+            name: UIApplication.willEnterForegroundNotification,
+            object: nil
+        )
+
+        // Initial online state
+        Database.database().goOnline()
+
+        // Monitor connection state
+        setupConnectionStateMonitoring()
     }
 
     private func setupConnectionStateMonitoring() {
@@ -55,25 +76,30 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
             if connected {
                 self.logger.debug("💚 Firebase connection: Online")
+                // Ensure critical paths are resynced when coming online
+                FirebaseAuthService.shared.ensureCriticalPathsSync()
             } else {
                 self.logger.debug("🔸 Firebase connection: Offline")
             }
         }
     }
 
-    func applicationDidEnterBackground(_ application: UIApplication) {
+    @objc private func handleAppDidEnterBackground() {
+        logger.debug("📱 App entered background")
         Database.database().goOffline()
-        logger.debug("📱 App entered background - Firebase connection closed")
+        logger.debug("📱 Firebase connection closed")
     }
 
-    func applicationWillEnterForeground(_ application: UIApplication) {
+    @objc private func handleAppWillEnterForeground() {
+        logger.debug("📱 App entering foreground")
         Database.database().goOnline()
-        logger.debug("📱 App entered foreground - Firebase connection restored")
+        logger.debug("📱 Firebase connection restored")
     }
 
     deinit {
-        // Clean up connection observer
+        // Clean up observers
         connectedRef?.removeAllObservers()
+        NotificationCenter.default.removeObserver(self)
     }
 }
 

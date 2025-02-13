@@ -5,6 +5,7 @@ import os
 protocol AuthServiceProtocol {
     var currentUser: FirebaseAuth.User? { get }
     func signOut() throws
+    func ensureCriticalPathsSync()
 }
 
 class FirebaseAuthService: AuthServiceProtocol {
@@ -36,9 +37,14 @@ class FirebaseAuthService: AuthServiceProtocol {
             Database.database().reference().child("profiles")
         ]
 
+        ensureCriticalPathsSync()
+    }
+
+    // MARK: - Connection Management
+    func ensureCriticalPathsSync() {
         criticalRefs.forEach { ref in
             ref.keepSynced(true)
-            logger.debug("Enabled sync for path: \(ref.url)")
+            logger.debug("🔄 Ensuring sync for path: \(ref.url)")
         }
     }
 
