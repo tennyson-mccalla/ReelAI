@@ -2,7 +2,8 @@ import SwiftUI
 import AVKit
 import os
 
-class PlayerObserver: ObservableObject {
+@MainActor
+final class PlayerObserver: ObservableObject {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "PlayerObserver")
     private var statusObserver: NSKeyValueObservation?
     private var loadedRangesObserver: NSKeyValueObservation?
@@ -11,12 +12,20 @@ class PlayerObserver: ObservableObject {
     private let isPreloading: Bool
     private var hasStartedPlaying = false
     private let videoId: String
+    private var notificationObserver: NSObjectProtocol?
 
     @Published var isReady = false
     @Published var isPreloaded = false
     @Published var bufferingProgress = 0.0
     @Published var isActive = false
     @Published var isPlaying = false
+
+    // Capture struct for thread-safe state passing
+    private struct PlaybackState {
+        let isActive: Bool
+        let isReady: Bool
+        let videoId: String
+    }
 
     init(player: AVPlayer, videoId: String, isPreloading: Bool) {
         self.player = player
@@ -27,20 +36,20 @@ class PlayerObserver: ObservableObject {
         player.automaticallyWaitsToMinimizeStalling = true
         player.actionAtItemEnd = .none
 
-        // Configure AVPlayerItem
         if let playerItem = player.currentItem {
             playerItem.preferredForwardBufferDuration = 5
             playerItem.canUseNetworkResourcesForLiveStreamingWhilePaused = true
 
-            // Add stall handling
-            NotificationCenter.default.addObserver(
+            // Handle stall notification on main actor
+            notificationObserver = NotificationCenter.default.addObserver(
                 forName: AVPlayerItem.playbackStalledNotification,
                 object: playerItem,
                 queue: .main
             ) { [weak self] _ in
                 guard let self = self else { return }
-                self.logger.debug("⚠️ Playback stalled, attempting recovery")
-                self.handleStall()
+                Task { @MainActor in
+                    await self.handleStall()
+                }
             }
         }
 
@@ -69,32 +78,52 @@ class PlayerObserver: ObservableObject {
         }
     }
 
-    private func handleStall() {
-        guard let player = self.player,
+    // MARK: - Stall Handling
+    private func handleStall() async {
+        guard let currentPlayer = player,
               !isPreloading,
               isActive else { return }
 
-        // Try to recover from stall
+        // Capture current state
+        let state = PlaybackState(
+            isActive: isActive,
+            isReady: isReady,
+            videoId: self.videoId
+        )
+
+        // Perform stall recovery
+        await handleStallRecovery(currentPlayer, state: state)
+    }
+
+    private nonisolated func handleStallRecovery(_ player: AVPlayer, state: PlaybackState) async {
         let currentTime = player.currentTime()
         player.pause()
-        player.seek(to: currentTime) { [weak self] completed in
-            guard let self = self,
-                  self.isActive,
-                  self.isReady,
-                  completed else { return }
-            player.play()
-            self.logger.debug("⚠️ Recovered from stall for: \(self.videoId)")
+
+        let completed = await withCheckedContinuation { continuation in
+            player.seek(to: currentTime) { completed in
+                continuation.resume(returning: completed)
+            }
         }
+
+        if completed {
+            await resumePlayback(player, state: state)
+        }
+    }
+
+    @MainActor
+    private func resumePlayback(_ player: AVPlayer, state: PlaybackState) async {
+        guard isActive, isReady else { return }
+        player.play()
+        logger.debug("⚠️ Recovered from stall for: \(self.videoId)")
     }
 
     private func setupObservers(for player: AVPlayer, videoId: String) {
         // Observe playback rate
         rateObserver = player.observe(\.rate) { [weak self] player, _ in
-            guard let self = self else { return }
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
                 let wasPlaying = self.isPlaying
                 self.isPlaying = player.rate > 0
-                // Only log when state actually changes
                 if wasPlaying != self.isPlaying {
                     self.logger.debug("\(self.isPlaying ? "▶️" : "⏸️") Playback \(self.isPlaying ? "started" : "paused") for: \(self.videoId)")
                 }
@@ -103,20 +132,19 @@ class PlayerObserver: ObservableObject {
 
         // Observe playback buffer
         loadedRangesObserver = player.currentItem?.observe(\.loadedTimeRanges) { [weak self] item, _ in
-            guard let self = self else { return }
-            let duration = item.duration.seconds
-            guard duration.isFinite, duration > 0, !duration.isNaN else { return }
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let duration = item.duration.seconds
+                guard duration.isFinite, duration > 0, !duration.isNaN else { return }
 
-            let loadedDuration = item.loadedTimeRanges.reduce(0.0) { total, range in
-                let timeRange = range.timeRangeValue
-                return total + timeRange.duration.seconds
-            }
+                let loadedDuration = item.loadedTimeRanges.reduce(0.0) { total, range in
+                    let timeRange = range.timeRangeValue
+                    return total + timeRange.duration.seconds
+                }
 
-            Task { @MainActor in
                 self.bufferingProgress = loadedDuration / duration
                 self.isPreloaded = loadedDuration / duration >= 0.3
 
-                // Start playback when enough is buffered
                 if self.isPreloaded && !self.hasStartedPlaying && !self.isPreloading && self.isActive {
                     self.hasStartedPlaying = true
                     player.seek(to: .zero)
@@ -127,8 +155,8 @@ class PlayerObserver: ObservableObject {
 
         // Observe player status
         statusObserver = player.currentItem?.observe(\.status) { [weak self] item, _ in
-            guard let self = self else { return }
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
                 switch item.status {
                 case .readyToPlay:
                     self.isReady = true
@@ -149,19 +177,57 @@ class PlayerObserver: ObservableObject {
             object: player.currentItem,
             queue: .main
         ) { [weak self] _ in
-            guard let self = self, !self.isPreloading, self.isActive else { return }
-            player.seek(to: .zero)
-            player.play()
+            Task { @MainActor [weak self] in
+                guard let self = self,
+                      !self.isPreloading,
+                      self.isActive,
+                      let player = self.player else { return }
+                player.seek(to: .zero)
+                player.play()
+            }
         }
     }
 
+    // MARK: - Lifecycle
     deinit {
-        deactivate()
+        // Log before cleanup
+        logger.debug("🗑️ Starting cleanup for observer: \(self.videoId)")
+
+        // Cleanup player
+        if !isPreloading {
+            player?.pause()
+            player?.replaceCurrentItem(with: nil)
+        }
+
+        // Remove notification observer first
+        if let observer = notificationObserver {
+            NotificationCenter.default.removeObserver(observer)
+            notificationObserver = nil
+        }
+
+        // Cleanup KVO observers
         statusObserver?.invalidate()
         loadedRangesObserver?.invalidate()
         rateObserver?.invalidate()
-        NotificationCenter.default.removeObserver(self)
-        logger.debug("🗑️ Observer deallocated for: \(self.videoId)")
+
+        // Clear references
+        statusObserver = nil
+        loadedRangesObserver = nil
+        rateObserver = nil
+        player = nil
+
+        // Final cleanup log
+        logger.debug("✅ Completed cleanup for observer: \(self.videoId)")
+    }
+
+    func togglePlayback() {
+        if isPlaying {
+            player?.pause()
+            logger.debug("⏸️ Paused playback")
+        } else {
+            player?.play()
+            logger.debug("▶️ Started playback")
+        }
     }
 }
 
@@ -178,16 +244,17 @@ struct VideoPlayerView: View {
         self.isMuted = isMuted
         self.isPreloading = isPreloading
 
-        // Create and configure player
-        let player = AVPlayer(url: video.videoURL)
+        // Simple synchronous initialization
+        let asset = AVURLAsset(url: video.videoURL, options: [
+            AVURLAssetPreferPreciseDurationAndTimingKey: true
+        ])
+        asset.resourceLoader.preloadsEligibleContentKeys = true
+        let playerItem = AVPlayerItem(asset: asset)
+        playerItem.preferredForwardBufferDuration = 5
+        let player = AVPlayer(playerItem: playerItem)
         player.isMuted = isMuted
-
-        // Set explicit playback parameters
         player.allowsExternalPlayback = false
         player.preventsDisplaySleepDuringVideoPlayback = true
-
-        // Enable background audio
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
 
         self.player = player
         _observer = StateObject(wrappedValue: PlayerObserver(player: player, videoId: video.id, isPreloading: isPreloading))
@@ -198,37 +265,37 @@ struct VideoPlayerView: View {
             Color.black
                 .edgesIgnoringSafeArea(.all)
 
-            VideoPlayerControllerRepresentable(player: player, onTap: {
-                logger.debug("👆 Tap detected, isPlaying: \(observer.isPlaying)")
-                if observer.isPlaying {
-                    logger.debug("⏸️ Attempting to pause")
-                    player.pause()
-                } else {
-                    logger.debug("▶️ Attempting to play")
-                    player.play()
+            VideoPlayerControllerRepresentable(player: player, observer: observer)
+                .opacity(observer.isReady ? 1 : 0)
+                .overlay {
+                    if !observer.isReady {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(1.5)
+                    }
                 }
-            })
-            .opacity(observer.isReady ? 1 : 0)
-            .overlay {
-                if !observer.isReady {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(1.5)
-                }
+        }
+        .onChange(of: observer.isActive, initial: true) { _, isActive in
+            if isActive {
+                observer.activate()
+            } else {
+                observer.deactivate()
             }
         }
-        .onAppear {
-            observer.activate()
-        }
-        .onDisappear {
-            observer.deactivate()
+        .task {
+            do {
+                // Configure audio session synchronously - no await needed
+                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            } catch {
+                logger.error("Failed to configure audio session: \(error.localizedDescription)")
+            }
         }
     }
 }
 
 struct VideoPlayerControllerRepresentable: UIViewControllerRepresentable {
     let player: AVPlayer
-    let onTap: () -> Void
+    let observer: PlayerObserver
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
@@ -237,35 +304,33 @@ struct VideoPlayerControllerRepresentable: UIViewControllerRepresentable {
         controller.videoGravity = .resizeAspectFill
         controller.view.backgroundColor = .black
 
-        // Ensure video layer is properly configured
         if let playerLayer = controller.view.layer as? AVPlayerLayer {
             playerLayer.videoGravity = .resizeAspectFill
         }
 
-        // Add tap gesture recognizer
         let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap))
         controller.view.addGestureRecognizer(tapGesture)
 
         return controller
     }
 
-    func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {
-        // Update if needed
-    }
+    func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onTap: onTap)
+        Coordinator(observer: observer)
     }
 
     class Coordinator: NSObject {
-        let onTap: () -> Void
+        let observer: PlayerObserver
 
-        init(onTap: @escaping () -> Void) {
-            self.onTap = onTap
+        init(observer: PlayerObserver) {
+            self.observer = observer
         }
 
         @objc func handleTap() {
-            onTap()
+            Task { @MainActor in
+                observer.togglePlayback()
+            }
         }
     }
 }

@@ -92,8 +92,14 @@ struct VideoFeedView: View {
                                 }
                                 logger.debug("⬆️ Moving to previous video")
                                 Task {
+                                    // Ensure animation starts before state change
                                     try? await Task.sleep(nanoseconds: UInt64(transitionDuration * 0.5 * 1_000_000_000))
-                                    await viewModel.moveToPreviousVideo()
+                                    // Move to previous video and wait for completion
+                                    await withTaskGroup(of: Void.self) { group in
+                                        group.addTask { await viewModel.moveToPreviousVideo() }
+                                        for await _ in group {}
+                                    }
+                                    // Wait for animation to complete
                                     try? await Task.sleep(nanoseconds: UInt64(transitionDuration * 0.5 * 1_000_000_000))
                                     isTransitioning = false
                                 }
@@ -103,8 +109,14 @@ struct VideoFeedView: View {
                                 }
                                 logger.debug("⬇️ Moving to next video")
                                 Task {
+                                    // Ensure animation starts before state change
                                     try? await Task.sleep(nanoseconds: UInt64(transitionDuration * 0.5 * 1_000_000_000))
-                                    await viewModel.moveToNextVideo()
+                                    // Move to next video and wait for completion
+                                    await withTaskGroup(of: Void.self) { group in
+                                        group.addTask { await viewModel.moveToNextVideo() }
+                                        for await _ in group {}
+                                    }
+                                    // Wait for animation to complete
                                     try? await Task.sleep(nanoseconds: UInt64(transitionDuration * 0.5 * 1_000_000_000))
                                     isTransitioning = false
                                 }
