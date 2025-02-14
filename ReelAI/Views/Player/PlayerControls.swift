@@ -3,6 +3,7 @@
 
 import SwiftUI
 import AVKit
+import os
 
 struct PlayerControls: View {
     @Binding var state: PlayerState
@@ -21,21 +22,23 @@ struct PlayerControls: View {
             // Top mute button
             HStack {
                 Spacer()
-                Image(systemName: state.isMuted ? "speaker.slash.fill" : "speaker.fill")
-                    .foregroundColor(.white)
-                    .font(.system(size: 20))
-                    .padding(12)
-                    .onTapGesture {
-                        toggleMute()
+                MuteButton(isMuted: state.isMuted, onTap: {
+                    print("🔈 Mute button tapped")
+                    toggleMute()
+                }, onLongPress: {
+                    print("🔍 Long press detected - START")
+                    Task { @MainActor in
+                        showDebugControls.toggle()
+                        print("🎛️ Debug controls visible: \(showDebugControls)")
                     }
-                    .onLongPressGesture(minimumDuration: 1) {
-                        print("🔍 Debug: Long press detected")
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            showDebugControls.toggle()
-                        }
-                    }
+                    print("🔍 Long press detected - END")
+                })
+                .padding(12)
             }
             .padding(.top, 48)
+            .onChange(of: showDebugControls) { _, newValue in
+                print("🔄 Debug controls state changed to: \(newValue)")
+            }
 
             Spacer()
 
@@ -43,7 +46,7 @@ struct PlayerControls: View {
             VStack(spacing: 0) {
                 ProgressBar(progress: progress)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 2) // Slightly taller
+                    .frame(height: 2)
                     .padding(.horizontal, 8)
                     .padding(.bottom, 40)
 
@@ -58,17 +61,14 @@ struct PlayerControls: View {
         }
         .overlay {
             #if DEBUG
-            VStack {
-                if showDebugControls {
+            if showDebugControls {
+                VStack {
+                    Spacer()
                     debugControls
-                        .padding(.vertical, 20)
-                        .background(Color.black.opacity(0.7))
-                        .cornerRadius(12)
-                        .padding()
-                        .transition(.move(edge: .bottom))
+                        .transition(.opacity)
+                    Spacer()
                 }
             }
-            .animation(.spring(), value: showDebugControls)
             #endif
         }
     }
@@ -80,18 +80,23 @@ struct PlayerControls: View {
 
     #if DEBUG
     private var debugControls: some View {
-        VStack {
-            Button("Test Cache") {
+        VStack(spacing: 12) {
+            Text("Debug Controls")
+                .foregroundColor(.white)
+                .font(.headline)
+
+            Button {
                 Task {
                     await VideoCacheManager.shared.logCacheStatus()
                 }
+            } label: {
+                Text("Test Cache")
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
             }
-            .padding()
-            .background(Color.black.opacity(0.5))
-            .foregroundColor(.white)
-            .cornerRadius(8)
 
-            Button("Clear Cache") {
+            Button {
                 Task {
                     do {
                         try await VideoCacheManager.shared.clearCache()
@@ -100,12 +105,15 @@ struct PlayerControls: View {
                         print("Failed to clear cache: \(error.localizedDescription)")
                     }
                 }
+            } label: {
+                Text("Clear Cache")
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
             }
-            .padding()
-            .background(Color.orange.opacity(0.5))
-            .foregroundColor(.white)
-            .cornerRadius(8)
         }
+        .padding()
+        .background(Color.black.opacity(0.5))
     }
     #endif
 }
@@ -124,6 +132,94 @@ struct ProgressBar: View {
                 Rectangle()
                     .fill(Color.white.opacity(0.8))
                     .frame(width: geometry.size.width * max(0, min(1, progress)))
+            }
+        }
+    }
+}
+
+struct MuteButton: UIViewRepresentable {
+    let isMuted: Bool
+    let onTap: () -> Void
+    let onLongPress: () -> Void
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ReelAI", category: "MuteButton")
+
+    func makeUIView(context: Context) -> UIView {
+        // Create a container view for better touch handling
+        let container = UIView()
+        container.backgroundColor = .clear
+
+        // Create the button
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: isMuted ? "speaker.slash.fill" : "speaker.fill"), for: .normal)
+        button.tintColor = .white
+
+        // Configure button layout
+        button.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(button)
+
+        // Make button fill container with padding
+        NSLayoutConstraint.activate([
+            button.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            button.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            button.widthAnchor.constraint(equalToConstant: 44),
+            button.heightAnchor.constraint(equalToConstant: 44),
+            container.widthAnchor.constraint(equalToConstant: 60),
+            container.heightAnchor.constraint(equalToConstant: 60)
+        ])
+
+        // Add tap gesture to container
+        let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap))
+        container.addGestureRecognizer(tapGesture)
+
+        // Add long press gesture to container
+        let longPress = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleLongPress))
+        longPress.minimumPressDuration = 1.0
+        container.addGestureRecognizer(longPress)
+
+        context.coordinator.logger = logger
+        logger.debug("🎯 MuteButton view created")
+
+        return container
+    }
+
+    func updateUIView(_ container: UIView, context: Context) {
+        guard let button = container.subviews.first as? UIButton else { return }
+        button.setImage(UIImage(systemName: isMuted ? "speaker.slash.fill" : "speaker.fill"), for: .normal)
+        logger.debug("🔄 MuteButton updated - isMuted: \(isMuted)")
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onTap: onTap, onLongPress: onLongPress)
+    }
+
+    class Coordinator: NSObject {
+        let onTap: () -> Void
+        let onLongPress: () -> Void
+        var logger: Logger?
+
+        init(onTap: @escaping () -> Void, onLongPress: @escaping () -> Void) {
+            self.onTap = onTap
+            self.onLongPress = onLongPress
+            super.init()
+        }
+
+        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
+            logger?.debug("👆 Tap detected on mute button")
+            if gesture.state == .ended {
+                logger?.debug("✅ Executing mute button tap action")
+                onTap()
+            }
+        }
+
+        @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+            switch gesture.state {
+            case .began:
+                logger?.debug("👇 Long press began on mute button")
+                onLongPress()
+            case .ended:
+                logger?.debug("☝️ Long press ended on mute button")
+            default:
+                break
             }
         }
     }
